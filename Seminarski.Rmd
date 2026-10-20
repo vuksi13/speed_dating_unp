@@ -1,0 +1,78 @@
+---
+title: "Analiza skupa podataka Speed Dating"
+subtitle: "Seminarski rad iz predmeta Uvod u nauku o podacima"
+author: "Ime Prezime (broj indeksa), Ime Prezime (broj indeksa)"
+date: "`r format(Sys.Date(), '%d.%m.%Y.')`"
+output:
+  word_document:
+    toc: true
+    number_sections: true
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r biblioteke}
+library(tidyverse)
+
+data <- read_csv("data/raw/Speed Dating Data.csv",
+                 locale = locale(encoding = "latin1"),
+                 show_col_types = FALSE)
+```
+
+# Uvod i cilj projekta
+
+Suština Speed Dating skupa podataka koji analiziramo jeste eksperiment koji su profesori Ray Fisman i Sheena Iyengar sproveli na Univerzitetu Kolumbija u SAD između 2002. i 2004. godine. Eksperiment je baziran na pitanju da li muškarci i žene biraju partnere na različit način, a rezultati su objavljeni u radu *Gender Differences in Mate Selection: Evidence From a Speed Dating Experiment* (2006).
+
+Ispitanici eksperimenta bili su postdiplomski studenti Univerziteta Kolumbija, tačnije 551 osoba na 21 događaju (talasu, eng. *wave*). Medijana starosti ispitanika je 26 godina, a raspon od 18 do 55 godina.
+
+## Kako se odvijao jedan događaj
+
+Pre svakog događaja, svaki učesnik je popunio upitnik o sebi: starost, rasu, oblast studija, interesovanja i to kako ocenjuje sopstvene osobine. U istom upitniku naveo je i šta traži kod partnera, tako što je rasporedio 100 poena na šest osobina: privlačnost, iskrenost, inteligenciju, zabavnost, ambicioznost i zajednička interesovanja.
+
+Tokom događaja žene su sedele za stolovima, a muškarci su prelazili od stola do stola i upoznavali osobe suprotnog pola. Svaki sastanak trajao je 4 minuta. Odmah nakon sastanka, oba učesnika su popunjavala kratak upitnik u kome su doneli odluku da li žele ponovo da vide tu osobu (da ili ne) i ocenili partnera na istih šest osobina, na skali od 1 do 10. Događaj se završavao kada je svaki učesnik upoznao sve osobe suprotnog pola.
+
+Ako su obe osobe odgovorile sa „da”, to se računalo kao poklapanje (eng. *match*), i organizatori su oboma prosledili kontakt podatke. Učesnici su sledećeg dana popunili kratak upitnik o tome koliko su bili zadovoljni događajem, a 3–4 nedelje kasnije još jedan, o tome da li su stupili u kontakt sa nekim od partnera.
+
+## Zašto su ovi podaci posebni
+
+Za svakog učesnika postoje dve vrste podataka: ono što je pre događaja rekao da traži kod partnera i ono kako je zaista odlučivao nakon svakog sastanka. Pošto su odluke donošene brzo i odmah zabeležene, podaci pokazuju na šta ljudi stvarno reaguju, a ne samo kako sebe opisuju. Zato možemo da proverimo da li se izjavljene i stvarne preferencije poklapaju.
+
+Treba imati u vidu da su ispitanici studenti jednog američkog univerziteta, pa se zaključci ne mogu automatski uopštiti na celu populaciju.
+
+## Cilj projekta
+
+Cilj projekta je da na osnovu podataka o učesniku i njegovih ocena partnera predvidimo da li će učesnik poželeti ponovni susret, odnosno vrednost promenljive `dec` (1 = da, 0 = ne). Pošto ciljna promenljiva ima dve vrednosti, reč je o problemu binarne klasifikacije.
+
+Pored predviđanja, istražujemo i:
+
+-   koje osobine partnera najviše utiču na odluku;
+-   da li se muškarci i žene razlikuju u tome šta im je važno;
+-   da li se ono što učesnici kažu da traže poklapa sa onim na osnovu čega zaista odlučuju.
+
+## Struktura podataka
+
+Svaki red u skupu podataka predstavlja jedan sastanak viđen iz ugla jednog učesnika. Pošto oba učesnika popunjavaju obrazac posle sastanka, svaki sastanak se u skupu pojavljuje dva puta, jednom iz ugla svake osobe. Zato 8.378 redova odgovara približno 4.200 sastanaka.
+
+Na primer, ispitanica 21 (ž) upoznala je ispitanika 40 (m):
+
+```{r primer-sastanka}
+data %>%
+  filter((iid == 21 & pid == 40) | (iid == 40 & pid == 21)) %>%
+  select(iid, pid, attr, dec)
+```
+
+Iz tabele vidimo da je osoba sa `iid` = 21 upoznala osobu sa `iid` = 40 (`pid` je `iid` partnera), ocenila je ocenom 6 na skali privlačnosti i donela odluku „ne”. Osoba sa `iid` = 40 ocenila je nju ocenom 3 za privlačnost i takođe donela odluku „ne”.
+
+Kolona `iid` je jedinstveni broj učesnika u celom skupu podataka. Kolona `id` je redni broj učesnika samo unutar njegovog događaja: brojanje kreće od 1 na svakom događaju, pa se ista vrednost `id` javlja na svih 21 događaja i svaki put pripada drugoj osobi. Zbog toga u analizi koristimo `iid`, a ne `id`.
+
+Ova struktura je važna za celu analizu iz tri razloga:
+
+1.  **Redovi nisu nezavisni.** Jedan učesnik se pojavljuje u 5 do 22 reda. Neki učesnici skoro svima kažu „da”, a neki skoro nikome, pa redovi iste osobe liče jedni na druge. To treba imati u vidu kod statističkih testova.
+2.  **Podela na trening i test skup radi se po učesniku.** Ako bismo redove delili nasumično, ista osoba bi se našla i u trening i u test skupu, pa bi model „prepoznao” njene navike i izgledao bolje nego što jeste. Zato svaki učesnik mora biti ili samo u trening ili samo u test skupu.
+3.  **Neke veličine računamo po osobi, a ne po redu.** Na primer, za prosečnu starost učesnika uzimamo jedan red po osobi, jer bi se inače osoba sa 22 sastanka računala 22 puta.
