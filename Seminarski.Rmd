@@ -81,7 +81,7 @@ Ova struktura je važna za celu analizu iz tri razloga:
 
 Skup podataka ima 8.378 redova i 195 kolona. Opisi kolona preuzeti su iz dokumentacije skupa (*Speed Dating Data Key*) i grupisani prema trenutku u kome su podaci prikupljeni. Većina kolona se odnosi na šest osobina partnera: privlačnost (`attr`), iskrenost (`sinc`), inteligenciju (`intel`), zabavnost (`fun`), ambicioznost (`amb`) i zajednička interesovanja (`shar`).
 
-Najpre ispisujemo broj redova, broj kolona i imena svih kolona:
+Najpre proveravamo dimenzije skupa:
 
 ```{r dimenzije}
 dim(data)
@@ -148,8 +148,7 @@ Zbog razlike između pitanja 1 i 7, odnosno između onoga što učesnik kaže da
 
 -   `match` – poklapanje (1 = obe osobe rekle su „da", 0 = ne).
 -   `int_corr` – korelacija ocena interesovanja učesnika i partnera iz upitnika pre događaja.
--   
-    -   `samerace` – ista rasa ili etnička pripadnost učesnika i partnera (1 = da, 0 = ne).
+-   `samerace` – ista rasa ili etnička pripadnost učesnika i partnera (1 = da, 0 = ne).
 
 ### Podaci o partneru (18 kolona)
 
@@ -168,7 +167,7 @@ Zbog razlike između pitanja 1 i 7, odnosno između onoga što učesnik kaže da
 -   `undergra` – škola na kojoj je učesnik završio osnovne studije.
 -   `mn_sat` – medijana SAT rezultata te škole, prema Barron's vodiču; autori je koriste kao meru inteligencije.
 -   `tuition` – školarina te škole.
--   `race` – rasa (1 = 1 = afroamerička, 2 = evropski/kavkaski Amerikanac, 3 = latino, 4 = azijski/pacifički, 5 = starosedeoci Amerike, 6 = ostalo).
+-   `race` – rasa (1 = afroamerička, 2 = evropski/kavkaski Amerikanac, 3 = latino, 4 = azijski/pacifički, 5 = starosedeoci Amerike, 6 = ostalo).
 -   `imprace`, `imprelig` – koliko je važno da partner bude iste rase, odnosno vere (1–10).
 -   `from`, `zipcode` – odakle učesnik potiče i poštanski broj mesta odrastanja.
 -   `income` – medijana prihoda domaćinstva za taj poštanski broj; vrednost nedostaje ako je učesnik iz inostranstva ili nije uneo broj.
@@ -269,6 +268,34 @@ summary(sastanci_po_osobi$n)
 
 Učesnici su imali od 5 do 22 sastanka, sa medijanom od 16. Razlika potiče od toga što su događaji bili različite veličine: svaki učesnik je upoznao sve osobe suprotnog pola na svom događaju, a na najmanjem događaju bilo je 10 učesnika, a na najvećem 44. Zbog toga učesnici sa više sastanaka imaju veći uticaj na rezultate ako se računa po redovima, što je još jedan razlog da se podela na trening i test skup radi po učesniku.
 
+### Provera potpunosti podataka
+
+Kolona `round` sadrži broj sastanaka koje je učesnik imao na događaju. Ako su podaci potpuni, broj redova svakog učesnika treba da bude jednak vrednosti `round`:
+
+```{r provera-round}
+provera <- data %>%
+  count(iid) %>%
+  left_join(distinct(data, iid, round, wave, gender), by = "iid") %>%
+  mutate(poklapa_se = n == round)
+
+provera %>% count(poklapa_se)
+```
+
+Za 537 od 551 učesnika broj redova odgovara broju sastanaka. Svih 14 odstupanja potiče sa istog događaja:
+
+```{r provera-talas-17}
+provera %>%
+  filter(!poklapa_se) %>%
+  count(wave, gender, round, n)
+
+data %>%
+  filter(wave == 17) %>%
+  distinct(iid, gender) %>%
+  count(gender)
+```
+
+Na događaju 17 bilo je 10 žena i 14 muškaraca. Žene imaju po 14 sastanaka, što odgovara broju muškaraca. Muškarci, međutim, imaju `round` = 11, a u podacima po 10 sastanaka, odnosno svakom nedostaje tačno jedan sastanak. Pošto su muškarci upoznali svih 10 žena koje postoje u podacima, najverovatnije je jedna učesnica bila predviđena za događaj, ali za nju ne postoji nijedan red, jer se nije pojavila, otišla je pre prvog sastanka ili njeni podaci nisu sačuvani. Na osnovu samih podataka ne možemo utvrditi koji je razlog u pitanju. Ovo odstupanje ne utiče na dalju analizu i redove ne uklanjamo, ali pokazuje da je struktura podataka u skladu sa opisom eksperimenta.
+
 ## Nedostajuće vrednosti po kolonama
 
 Nedostajuće vrednosti su polja u kojima nema podatka. Pre bilo kakvog modelovanja moramo da znamo gde ih ima i zašto, jer od uzroka zavisi šta ćemo s njima. Kolonu u kojoj je pitanje bilo postavljeno, a poneki učesnik ga je preskočio, možemo u nekim slučajevima dopuniti. Kolonu koja je prazna zato što pitanje u tom delu eksperimenta uopšte nije postavljeno ne možemo smisleno popuniti. U ovom poglavlju udeo NA računamo po redovima, odnosno po sastancima.
@@ -291,11 +318,11 @@ na_tabela %>%
 
 Na vrhu tabele nalaze se kolone iz naknadnih upitnika i jedna kolona iz upitnika pre događaja:
 
-- `num_in_3` (92%) i `numdat_3` (82,1%) odnose se na ponašanje nakon događaja. Prvu je popunio samo mali deo učesnika, a nijedna nije bila popunjena ni u jednom talasu u više od 16% redova.
-- `expnum` (78,5%) je kolona iz upitnika pre događaja. Razlog njene praznine analiziramo u nastavku poglavlja.
-- Kolone `attr7_2`, `sinc7_2`, `intel7_2`, `fun7_2`, `amb7_2` i `shar7_2` (oko 76–77%) beleže šta je učesniku zaista bilo važno pri odlučivanju, a prikupljene su dan nakon događaja. Kao što pokazujemo u nastavku, ova pitanja nisu postavljana u svim talasima.
-- Kolone `attr7_3` … `shar7_3`, `attr5_3` … `amb5_3` i `shar2_3` imaju potpuno isti udeo od 75,9%, što znači da nedostaju u istim redovima. Razlozi za to takođe su opisani u nastavku.
-- Kolone `attr4_3` … `fun4_3` su nešto manje prazne (64,7%), ali su i dalje prazne u većini redova.
+-   `num_in_3` (92%) i `numdat_3` (82,1%) odnose se na ponašanje nakon događaja. Prvu je popunio samo mali deo učesnika (ni u jednom talasu više od 16% redova), a druga je i u najboljem talasu popunjena u samo 44% redova.
+-   `expnum` (78,5%) je kolona iz upitnika pre događaja. Razlog njene praznine analiziramo u nastavku poglavlja.
+-   Kolone `attr7_2`, `sinc7_2`, `intel7_2`, `fun7_2`, `amb7_2` i `shar7_2` (oko 76–77%) beleže šta je učesniku zaista bilo važno pri odlučivanju, a prikupljene su dan nakon događaja. Kao što pokazujemo u nastavku, ova pitanja nisu postavljana u svim talasima.
+-   Kolone `attr7_3` … `shar7_3`, `attr5_3` … `amb5_3` i `shar2_3` imaju potpuno isti udeo od 75,9%, što znači da nedostaju u istim redovima. Razlozi za to takođe su opisani u nastavku.
+-   Kolone `attr4_3` … `fun4_3` su nešto manje prazne (64,7%), ali su i dalje prazne u većini redova.
 
 ### Raspodela kolona prema udelu nedostajućih vrednosti
 
@@ -341,7 +368,7 @@ na_tabela %>%
             prosecan_procenat_na = round(100 * mean(udeo_na), 1))
 ```
 
-Prosečan udeo NA raste sa vremenom koje je prošlo od događaja: kod podataka o partneru iznosi oko 4%, kod upitnika pre događaja oko 13%, kod upitnika dan nakon događaja oko 34%, kod upitnika na sredini događaja oko 52%, a kod upitnika nakon 3–4 nedelje oko 66%. Kolone koje spadaju u grupu „ostalo" (ocene partnera, interesovanja, demografski podaci i slično) imaju znatno manji udeo NA.
+Kolone sa podacima o partneru imaju najmanji udeo NA (oko 4%), a kolone iz upitnika pre događaja oko 13%. Kolone iz kasnijih upitnika imaju znatno veći udeo: upitnik na sredini događaja oko 52%, upitnik dan nakon događaja oko 34%, a upitnik nakon 3–4 nedelje oko 66%. Najviše nedostaju podaci iz upitnika koji nisu bili obavezni ili nisu postavljani na svim događajima. Kolone koje spadaju u grupu „ostalo" (ocene partnera, interesovanja, demografski podaci i slično) imaju znatno manji udeo NA.
 
 ### Nedostajuće vrednosti po talasima
 
@@ -358,9 +385,9 @@ data %>%
 
 Tabela pokazuje da ove kolone nisu prazne nasumično, nego da su prazne u celim talasima:
 
-- `expnum` je popunjena samo u talasima 1–5 (NA između 0% i 10%), a od talasa 6 pa nadalje nedostaje u 100% redova. Ukupnih 78,5% NA zato nije posledica toga što su učesnici preskakali pitanje, već toga što pitanje u kasnijim talasima nije postavljeno.
-- `attr4_1` je potpuno prazna u talasima 1–5, a od talasa 6 popunjena (NA između 0% i 11,1%).
-- `attr5_1` je potpuno prazna u talasima 1–9, a od talasa 10 popunjena (NA do 11,1%).
+-   `expnum` je popunjena samo u talasima 1–5 (NA između 0% i 10%), a od talasa 6 pa nadalje nedostaje u 100% redova. Ukupnih 78,5% NA zato nije posledica toga što su učesnici preskakali pitanje, već toga što pitanje u kasnijim talasima nije postavljeno.
+-   `attr4_1` je potpuno prazna u talasima 1–5, a od talasa 6 popunjena (NA između 0% i 11,1%).
+-   `attr5_1` je potpuno prazna u talasima 1–9, a od talasa 10 popunjena (NA do 11,1%).
 
 Preostali mali udeli NA u talasima u kojima su pitanja postavljena (na primer 11,1% u talasu 13) verovatno potiču od pojedinačnih učesnika koji su preskočili pitanje. Ova razlika je važna za dalji rad: prvu vrstu praznine (pitanje nije postavljeno) ne možemo popraviti, dok se drugu (preskočeno pitanje) može rešavati imputacijom.
 
@@ -377,9 +404,9 @@ data %>%
 
 Rezultat pokazuje isti obrazac:
 
-- `attr7_2` je u talasima 1–14 prazna u 100% redova, a popunjena je tek u talasima 15–21 (NA od 9,1% do 50%). Pitanje o tome šta je zaista bilo važno pri odlučivanju, dan nakon događaja, postavljano je dakle samo u poslednjih sedam talasa.
-- `attr7_3` je u talasima 1–9 prazna u 100% redova, a u talasima 10–21 delimično popunjena (NA od 22,2% do 71,4%).
-- `you_call` je popunjena u svim talasima, ali samo delimično (NA između 22,2% i 71,4%). Vrednosti za `attr7_3` u talasima 10–21 identične su vrednostima za `you_call`, što znači da su u tim talasima upitnik popunjavale iste osobe.
+-   `attr7_2` je u talasima 1–14 prazna u 100% redova, a popunjena je tek u talasima 15–21 (NA od 9,1% do 50%). Pitanje o tome šta je zaista bilo važno pri odlučivanju, dan nakon događaja, postavljano je dakle samo u poslednjih sedam talasa.
+-   `attr7_3` je u talasima 1–9 prazna u 100% redova, a u talasima 10–21 delimično popunjena (NA od 22,2% do 71,4%).
+-   `you_call` je popunjena u svim talasima, ali samo delimično (NA između 22,2% i 71,4%). Vrednosti za `attr7_3` u talasima 10–21 identične su vrednostima za `you_call`, što znači da su u tim talasima upitnik popunjavale iste osobe.
 
 Posmatrano po učesnicima, bar jedno pitanje iz upitnika nakon 3–4 nedelje popunilo je samo 263 od 551 učesnika, odnosno oko 48%:
 
@@ -409,10 +436,113 @@ Ciljna promenljiva `dec` nema nijednu nedostajuću vrednost. Ocene partnera imaj
 
 Iz prethodnih rezultata izvodimo nekoliko zaključaka:
 
-- **Naknadne upitnike (`_2` i `_3`) ne koristimo kao ulaz modela.** Pored velikog udela NA, oni su popunjeni nakon događaja, pa ne mogu da služe za predviđanje odluke koja je doneta tokom događaja. Kada bismo ih uključili, model bi koristio informaciju koja u trenutku odluke nije postojala.
-- **Pažnja i kod promenljivih `match` i `dec_o`.** Promenljiva `match` je izvedena iz odluka obe osobe, pa sadrži odluku učesnika (`dec`) koju pokušavamo da predvidimo. Promenljiva `dec_o` je odluka partnera, koja u trenutku odluke učesnika nije poznata.
-- **Kolone `expnum`, `attr4_1`, `attr5_1` i kolone sa `7` u imenu ne možemo koristiti na celom skupu**, jer su prazne u čitavim talasima. Ako ih ipak želimo, analizu moramo ograničiti samo na talase u kojima su popunjene.
-- **Za `shar` (12,7% NA) i `amb` (8,5% NA) treba odlučiti kako postupiti sa nedostajućim ocenama**, jer su to promenljive iz same ciljne analize.
-- **Udeo NA računat po redovima daje veću težinu učesnicima sa više sastanaka.** Kod kolona iz upitnika pre događaja, čija je vrednost ista u svim redovima jednog učesnika, tačniju sliku daje udeo računat po osobi.
+-   **Naknadne upitnike (`_2` i `_3`) ne koristimo kao ulaz modela.** Pored velikog udela NA, oni su popunjeni nakon događaja, pa ne mogu da služe za predviđanje odluke koja je doneta tokom događaja. Kada bismo ih uključili, model bi koristio informaciju koja u trenutku odluke nije postojala.
+-   **Pažnja i kod promenljivih `match` i `dec_o`.** Promenljiva `match` je izvedena iz odluka obe osobe, pa sadrži odluku učesnika (`dec`) koju pokušavamo da predvidimo. Promenljiva `dec_o` je odluka partnera, koja u trenutku odluke učesnika nije poznata.
+-   **Kolone `expnum`, `attr4_1`, `attr5_1` i kolone sa `7` u imenu ne možemo koristiti na celom skupu**, jer su prazne u čitavim talasima. Ako ih ipak želimo, analizu moramo ograničiti samo na talase u kojima su popunjene.
+-   **Za `shar` (12,7% NA) i `amb` (8,5% NA) treba odlučiti kako postupiti sa nedostajućim ocenama**, jer su to promenljive iz same ciljne analize.
+-   **Udeo NA računat po redovima daje veću težinu učesnicima sa više sastanaka.** Kod kolona iz upitnika pre događaja, čija je vrednost ista u svim redovima jednog učesnika, tačniju sliku daje udeo računat po osobi.
 
+## Izbor kolona
 
+Skup ima 195 kolona, ali za cilj našeg rada nisu sve potrebne niti dozvoljene. Kolone biramo prema tri pitanja:
+
+1.  **Da li je vrednost postojala u trenutku kada je učesnik donosio odluku?** Model treba da predvidi odluku na osnovu informacija koje su tada postojale. Kolone koje su nastale posle odluke, ili koje sadrže odluku partnera, otkrivaju ishod i dovode do curenja podataka (eng. *data leakage*): model bi na testu izgledao odlično, a u stvarnoj primeni ne bi mogao da se koristi.
+2.  **Da li je to informacija koju učesnik ima o sebi ili o partneru?** Cilj nam je da opišemo kako učesnik odlučuje, pa koristimo samo ono što je učesnik znao ili doživeo, a ne ono što je partner napisao o sebi ili o njemu.
+3.  **Da li je kolona upotrebljiva?** Kolone koje nedostaju u celim talasima ili u većini redova, kao i kolone koje ponavljaju informaciju iz druge kolone, ne donose korist.
+
+### Kolone koje zadržavamo
+
+| Uloga | Kolone |
+|:---|:---|
+| Ciljna promenljiva | `dec` |
+| Identifikatori (nisu ulaz modela) | `iid`, `pid`, `wave` |
+| Učesnik | `gender`, `age`, `race`, `field_cd`, `career_c`, `imprace`, `imprelig`, `goal`, `date`, `go_out`, 17 interesovanja (`sports` … `yoga`) |
+| Preferencije i samoprocena | `attr1_1` … `shar1_1`, `attr2_1` … `shar2_1`, `attr3_1` … `amb3_1` |
+| Partner i par | `age_o`, `race_o`, `samerace`, `int_corr` |
+| Sastanak | `attr`, `sinc`, `intel`, `fun`, `amb`, `shar`, `like`, `prob`, `met`, `order`, `condtn` |
+
+Identifikatore zadržavamo zbog grupisanja i podele podataka po učesniku, ali ih ne koristimo kao ulaz modela: model koji bi „zapamtio” učesnika 21 ne bi mogao ništa da kaže o novoj osobi.
+
+Kolone `age_o` i `race_o` zadržavamo jer učesnik na sastanku vidi osobu preko puta sebe, pa su mu starost i rasa partnera približno poznate. Biće nam potrebne i za razliku u godinama i za proveru hipoteze o istoj rasi.
+
+Kolone `like` i `prob` popunjene su na istom obrascu i u istom trenutku kao odluka `dec`, pa su dozvoljene. Ipak, `like` („koliko ti se partner dopao”) je skoro sama odluka izražena brojem, pa ćemo u delu sa modelima porediti model sa i bez ovih kolona.
+
+### Kolone koje isključujemo
+
+| Grupa | Kolone | Razlog |
+|:---|:---|:---|
+| Curenje: ishod i odluka partnera | `match`, `dec_o` | `match` sadrži odluku učesnika; `dec_o` je odluka partnera, koja se saznaje tek sledećeg dana |
+| Curenje: obrazac partnera | `attr_o` … `shar_o`, `like_o`, `prob_o`, `met_o` | Partnerove ocene učesnika; učesnik ih ne vidi kada odlučuje |
+| Curenje: posle odluke | sve kolone sa sufiksima `_2` i `_3`, `match_es` | Popunjene posle sastanka ili na kraju večeri, kada su odluke već donete |
+| Sredina događaja | `attr1_s` … `shar1_s`, `attr3_s` … `amb3_s` | Za sastanke iz prve polovine večeri još nisu postojale; nedostaju u oko 52% redova |
+| Van pitanja koje postavljamo | `pf_o_att` … `pf_o_sha` | Šta partner traži kod drugih; učesnik to ne zna |
+| Nedostaju u celim talasima | `expnum`, `attr4_1` … `shar4_1`, `attr5_1` … `amb5_1` | Pitanja nisu postavljena na svim događajima (videti prethodno poglavlje) |
+| Previše nedostajućih vrednosti | `mn_sat`, `tuition`, `income` | Nedostaje 49–63% vrednosti |
+| Ponavljaju informaciju | `id`, `partner`, `idg`, `field`, `career` | Zamenjeni kolonama `iid`, `pid`, `gender`, `field_cd` i `career_c` |
+| Neupotrebljivi kao ulaz | `zipcode`, `from`, `undergra`, `position`, `positin1`, `round`, `exphappy` | Poštanski broj i nazivi mesta i škola su slobodan tekst ili šifre sa stotinama vrednosti; broj stola i ukupan broj sastanaka ne govore ništa o konkretnom partneru; `exphappy` je opšte očekivanje pre događaja |
+
+### Izdvajanje kolona
+
+```{r izbor-kolona}
+ciljna <- "dec"
+
+identifikatori <- c("iid", "pid", "wave")
+
+ucesnik <- c("gender", "age", "race", "field_cd", "career_c",
+             "imprace", "imprelig", "goal", "date", "go_out")
+
+interesovanja <- c("sports", "tvsports", "exercise", "dining", "museums",
+                   "art", "hiking", "gaming", "clubbing", "reading", "tv",
+                   "theater", "movies", "concerts", "music", "shopping", "yoga")
+
+preferencije <- c("attr1_1", "sinc1_1", "intel1_1", "fun1_1", "amb1_1", "shar1_1",
+                  "attr2_1", "sinc2_1", "intel2_1", "fun2_1", "amb2_1", "shar2_1",
+                  "attr3_1", "sinc3_1", "intel3_1", "fun3_1", "amb3_1")
+
+partner_par <- c("age_o", "race_o", "samerace", "int_corr")
+
+sastanak <- c("attr", "sinc", "intel", "fun", "amb", "shar",
+              "like", "prob", "met", "order", "condtn")
+
+izabrane_kolone <- c(ciljna, identifikatori, ucesnik, interesovanja,
+                     preferencije, partner_par, sastanak)
+
+dim(data)
+
+sd <- data %>%
+  select(all_of(izabrane_kolone))
+
+dim(sd)
+```
+
+Od 195 kolona zadržali smo 63: ciljnu promenljivu, 3 identifikatora i 59 kolona koje mogu biti ulaz modela. Broj redova se nije promenio, jer u ovom koraku biramo samo kolone. Sve zadržane kolone postojale su u trenutku odluke i opisuju učesnika, njegove preferencije, partnera onako kako ga je učesnik video i sam sastanak. Isključene kolone ili otkrivaju ishod, ili nisu dostupne za sve učesnike, ili ponavljaju informaciju koju već imamo. U daljem radu koristimo skup `sd`.
+
+# Čišćenje podataka
+
+U ovom poglavlju proveravamo da li izabrani podaci odgovaraju opisu iz dokumentacije i ispravljamo ono što je pogrešno: duplikate, tipove promenljivih, nedosledno šifrovane vrednosti i vrednosti van dozvoljenog opsega. Nedostajuće vrednosti i ekstremne vrednosti obrađujemo u posebnim poglavljima. Svaki korak počinje pretpostavkom koju proveravamo, a završava se odlukom šta radimo sa odstupanjima.
+
+## Duplikati
+
+Ako bi se isti sastanak u skupu pojavio dva puta, njegova odluka i ocene bi se u analizi i u modelu računale dvaput. Proveravamo dve vrste duplikata: redove koji su potpuno isti u svim kolonama i redove sa istim parom učesnik–partner (`iid`, `pid`), koji bi predstavljali isti sastanak iz ugla iste osobe.
+
+```{r duplikati-potpuni}
+sum(duplicated(sd))
+```
+
+```{r duplikati-parovi}
+sd %>%
+  count(iid, pid) %>%
+  filter(n > 1)
+```
+
+U skupu nema potpuno istih redova, a nijedan par učesnik–partner se ne ponavlja. Redovi koji predstavljaju isti sastanak iz ugla dva učesnika (na primer `iid` = 21, `pid` = 40 i `iid` = 40, `pid` = 21) nisu duplikati, jer sadrže odluke i ocene dve različite osobe, pa ih zadržavamo.
+
+Pri ovoj proveri treba obratiti pažnju na redove u kojima `pid` nedostaje, jer funkcija `count()` vrednost NA tretira kao običnu vrednost:
+
+```{r pid-nedostaje}
+data %>%
+  filter(is.na(pid)) %>%
+  count(wave, partner)
+```
+
+`pid` nedostaje u 10 redova sa događaja 5, i svi se odnose na istog partnera (redni broj 7 na tom događaju), čiji `iid` nije zabeležen. Svaki od tih 10 učesnika ima samo jedan takav red, pa nedostajući `pid` ne stvara lažne duplikate. Ove redove zadržavamo, jer sadrže odluku i ocene učesnika, a `pid` nije ulaz modela. Jedino ih ne možemo povezati sa odgovarajućim redom iz ugla partnera.

@@ -61,7 +61,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88em;backgroun
       <li class="l0"><label><input type="checkbox" id="t6" checked=""> <span><strong>p1-1</strong> Uvod: the experiment, goals, limitation</span></label></li>
       <li class="l0"><label><input type="checkbox" id="t7" checked=""> <span><strong>p1-2</strong> Struktura podataka: one row = one date, <code>iid</code> vs <code>id</code>, why it matters</span></label></li>
       <li class="l0"><label><input type="checkbox" id="t8" checked=""> <span><strong>Opis kolona</strong>: apply the 7 fixes (<code>round</code>, scale in waves 6–9, <code>_s</code> scale, <code>attr2_3</code>, race, <code>samerace</code>, remove the list of column names)</span></label></li>
-<<<<<<< HEAD
+&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD
       <li class="l0"><label><input type="checkbox" id="t9"> <span><strong>p1-3</strong> Size of the data</span></label></li>
       <li class="l1"><label><input type="checkbox" id="t10"> <span>number of people (<code>n_distinct(iid)</code>) and events (<code>n_distinct(wave)</code>)</span></label></li>
       <li class="l1"><label><input type="checkbox" id="t11"> <span>women and men, <strong>one row per person</strong> (<code>distinct(iid, .keep_all = TRUE)</code>)</span></label></li>
@@ -71,20 +71,20 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88em;backgroun
       <li class="l1"><label><input type="checkbox" id="t10" checked=""> <span>number of people (<code>n_distinct(iid)</code>) and events (<code>n_distinct(wave)</code>)</span></label></li>
       <li class="l1"><label><input type="checkbox" id="t11" checked=""> <span>women and men, <strong>one row per person</strong> (<code>distinct(iid, .keep_all = TRUE)</code>)</span></label></li>
       <li class="l1"><label><input type="checkbox" id="t12" checked=""> <span><code>round</code> check: rows per person vs <code>round</code>. Explain the 14 people in wave 17.</span></label></li>
->>>>>>> c6781c05db224617c0c75d09a6ebb4730e2a431b
+&gt;&gt;&gt;&gt;&gt;&gt;&gt; c6781c05db224617c0c75d09a6ebb4730e2a431b
       <li class="l0"><label><input type="checkbox" id="t13" checked=""> <span><strong>p1-4</strong> Missing values for every column</span></label></li>
       <li class="l1"><label><input type="checkbox" id="t14" checked=""> <span>table: share of NA per column, sorted from highest</span></label></li>
       <li class="l1"><label><input type="checkbox" id="t15" checked=""> <span>count of columns with no NA / under 10% / 10–50% / over 50%</span></label></li>
       <li class="l1"><label><input type="checkbox" id="t16" checked=""> <span>for suspicious columns (<code>expnum</code>, <code>attr4_1</code>, <code>attr5_1</code>), check NA by wave</span></label></li>
       <li class="l1"><label><input type="checkbox" id="t17" checked=""> <span>interpretation: which groups of columns are mostly empty, and why</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t18"> <span><strong>p1-5</strong> Column selection: target / identifiers / inputs, with a reason for each excluded group</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t19"> <span><strong>p1-6</strong> "Izbor kolona" section in the report (<code>select()</code>, <code>dim()</code> before and after)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t18" checked=""> <span><strong>p1-5</strong> Column selection: target / identifiers / inputs, with a reason for each excluded group</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t19" checked=""> <span><strong>p1-6</strong> "Izbor kolona" section in the report (<code>select()</code>, <code>dim()</code> before and after)</span></label></li>
     </ul>
   </section>
   <section class="phase">
     <h2>2. Cleaning<span class="cnt"></span></h2>
     <ul>
-      <li class="l0"><label><input type="checkbox" id="t20"> <span>Duplicates (whole rows and <code>iid</code>–<code>pid</code> pairs)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t20" checked=""> <span>Duplicates (whole rows and <code>iid</code>–<code>pid</code> pairs)</span></label></li>
       <li class="l0"><label><input type="checkbox" id="t21"> <span>Codes → factors (<code>gender</code>, <code>race</code>, <code>race_o</code>, <code>goal</code>, <code>field_cd</code>); note the reversed scale of <code>date</code>/<code>go_out</code></span></label></li>
       <li class="l0"><label><input type="checkbox" id="t22"> <span><code>met</code> by wave → recode</span></label></li>
       <li class="l0"><label><input type="checkbox" id="t23"> <span>Ratings outside 1–10 (zeros) → NA</span></label></li>
