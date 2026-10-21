@@ -232,3 +232,150 @@ Prema ključu, pitanja 1, 2 i 4 rešavaju se raspodelom 100 poena, osim u talasi
 **Napomena:** U ključu piše da je za `date_3` vrednost 1 = da, a 2 = ne, ali u podacima se pojavljuju vrednosti 0 i 1. Ovo treba proveriti pre upotrebe promenljive.
 
 Veliki deo kolona ima mnogo nedostajućih vrednosti. Naknadni upitnici (`_2`, `_3`) nisu popunjeni za sve učesnike, a, na primer, vrednost promenljive `num_in_3` nedostaje u oko 92% redova.
+
+
+## Nedostajuće vrednosti po kolonama
+
+Nedostajuće vrednosti (NA) su polja u kojima nema podatka. Pre bilo kakvog modelovanja moramo da znamo gde ih ima i zašto, jer od uzroka zavisi šta ćemo s njima. Kolonu u kojoj je pitanje bilo postavljeno, a poneki učesnik ga je preskočio, možemo u nekim slučajevima dopuniti. Kolonu koja je prazna zato što pitanje u tom delu eksperimenta uopšte nije postavljeno ne možemo smisleno popuniti. U ovom poglavlju udeo NA računamo po redovima, odnosno po sastancima.
+
+### Procenat nedostajućih vrednosti po kolonama
+
+Za svaku kolonu računamo procenat nedostajućih vrednosti i sortiramo kolone od najvećeg procenta ka najmanjem. Pošto skup ima 195 kolona, prikazujemo samo prvih 25.
+
+```{r na-udeo}
+na_tabela <- data %>%
+  summarise(across(everything(), ~ mean(is.na(.x)))) %>%
+  pivot_longer(everything(), names_to = "kolona", values_to = "udeo_na") %>%
+  arrange(desc(udeo_na))
+
+na_tabela %>%
+  mutate(procenat_na = round(100 * udeo_na, 1)) %>%
+  select(kolona, procenat_na) %>%
+  print(n = 25)
+```
+
+Na vrhu tabele nalaze se kolone iz naknadnih upitnika i jedna kolona iz upitnika pre događaja:
+
+- `num_in_3` (92%) i `numdat_3` (82,1%) odnose se na ponašanje nakon događaja. Prvu je popunio samo mali deo učesnika, a nijedna nije bila popunjena ni u jednom talasu u više od 16% redova.
+- `expnum` (78,5%) je kolona iz upitnika pre događaja. Razlog njene praznine analiziramo u nastavku poglavlja.
+- Kolone `attr7_2`, `sinc7_2`, `intel7_2`, `fun7_2`, `amb7_2` i `shar7_2` (oko 76–77%) beleže šta je učesniku zaista bilo važno pri odlučivanju, a prikupljene su dan nakon događaja. Kao što pokazujemo u nastavku, ova pitanja nisu postavljana u svim talasima.
+- Kolone `attr7_3` … `shar7_3`, `attr5_3` … `amb5_3` i `shar2_3` imaju potpuno isti udeo od 75,9%, što znači da nedostaju u istim redovima. Razlozi za to takođe su opisani u nastavku.
+- Kolone `attr4_3` … `fun4_3` su nešto manje prazne (64,7%), ali su i dalje prazne u većini redova.
+
+### Raspodela kolona prema udelu nedostajućih vrednosti
+
+Da bismo dobili opštu sliku, kolone razvrstavamo u četiri grupe prema udelu NA i brojimo koliko ih ima u svakoj.
+
+```{r na-grupe}
+na_tabela %>%
+  mutate(grupa = case_when(
+    udeo_na == 0   ~ "1. bez NA",
+    udeo_na < 0.10 ~ "2. manje od 10%",
+    udeo_na <= 0.50 ~ "3. 10-50%",
+    TRUE           ~ "4. preko 50%"
+  )) %>%
+  count(grupa)
+```
+
+Od 195 kolona, njih 13 (oko 7%) nema nijednu nedostajuću vrednost, a još 74 (oko 38%) ima manje od 10% NA. Dakle, 87 kolona, odnosno oko 45% skupa, je gotovo potpuno popunjeno. Za 49 kolona (oko 25%) nedostaje između 10% i 50% vrednosti, a čak 59 kolona (oko 30%) je prazno u više od polovine redova. Skup je, dakle, podeljen na dve različite celine: jedan deo je pouzdan i popunjen, a drugi, skoro trećinu skupa, ne možemo koristiti bez dodatnog razmišljanja.
+
+Kolone bez ijedne nedostajuće vrednosti su:
+
+```{r kolone-bez-na}
+na_tabela %>%
+  filter(udeo_na == 0) %>%
+  pull(kolona)
+```
+
+To su `iid`, `gender`, `idg`, `condtn`, `wave`, `round`, `position`, `order`, `partner`, `match`, `samerace`, `dec_o` i `dec`. Među njima je i ciljna promenljiva `dec`, što je važno: za svaki sastanak znamo odluku učesnika, pa nijedan red ne moramo da odbacujemo zbog nedostajuće ciljne promenljive. Kolone `id`, `pid` i `positin1` imaju po nekoliko nedostajućih vrednosti.
+
+Udeo NA razlikuje se i po tome kada je podatak prikupljen. Zato kolone grupišemo prema sufiksu iz njihovog imena:
+
+```{r na-po-sufiksu}
+na_tabela %>%
+  mutate(grupa = case_when(
+    str_ends(kolona, "_o") ~ "_o (partner)",
+    str_ends(kolona, "_1") ~ "_1 (pre događaja)",
+    str_ends(kolona, "_s") ~ "_s (sredina događaja)",
+    str_ends(kolona, "_2") ~ "_2 (dan nakon događaja)",
+    str_ends(kolona, "_3") ~ "_3 (3-4 nedelje kasnije)",
+    TRUE ~ "ostalo"
+  )) %>%
+  group_by(grupa) %>%
+  summarise(broj_kolona = n(),
+            prosecan_procenat_na = round(100 * mean(udeo_na), 1))
+```
+
+Prosečan udeo NA raste sa vremenom koje je prošlo od događaja: kod podataka o partneru iznosi oko 4%, kod upitnika pre događaja oko 13%, kod upitnika dan nakon događaja oko 34%, kod upitnika na sredini događaja oko 52%, a kod upitnika nakon 3–4 nedelje oko 66%. Kolone koje spadaju u grupu „ostalo" (ocene partnera, interesovanja, demografski podaci i slično) imaju znatno manji udeo NA.
+
+### Nedostajuće vrednosti po talasima
+
+Tri kolone zahtevaju posebnu pažnju jer pripadaju upitniku pre događaja, koji su popunjavali svi učesnici, a ipak imaju veliki udeo NA. To su `expnum`, `attr4_1` i `attr5_1`. Zato ispitujemo udeo NA u svakom talasu posebno.
+
+```{r na-po-talasu}
+data %>%
+  group_by(wave) %>%
+  summarise(across(c(expnum, attr4_1, attr5_1),
+                   ~ round(100 * mean(is.na(.x)), 1)),
+            .groups = "drop") %>%
+  print(n = Inf)
+```
+
+Tabela pokazuje da ove kolone nisu prazne nasumično, nego da su prazne u celim talasima:
+
+- `expnum` je popunjena samo u talasima 1–5 (NA između 0% i 10%), a od talasa 6 pa nadalje nedostaje u 100% redova. Ukupnih 78,5% NA zato nije posledica toga što su učesnici preskakali pitanje, već toga što pitanje u kasnijim talasima nije postavljeno.
+- `attr4_1` je potpuno prazna u talasima 1–5, a od talasa 6 popunjena (NA između 0% i 11,1%).
+- `attr5_1` je potpuno prazna u talasima 1–9, a od talasa 10 popunjena (NA do 11,1%).
+
+Preostali mali udeli NA u talasima u kojima su pitanja postavljena (na primer 11,1% u talasu 13) verovatno potiču od pojedinačnih učesnika koji su preskočili pitanje. Ova razlika je važna za dalji rad: prvu vrstu praznine (pitanje nije postavljeno) ne možemo popraviti, dok se drugu (preskočeno pitanje) može rešavati imputacijom.
+
+Isto proveravamo i za kolone iz naknadnih upitnika. Poredimo `attr7_2` i `attr7_3` sa kolonom `you_call`, koja pokazuje da li je učesnik uopšte odgovorio na upitnik nakon 3–4 nedelje:
+
+```{r na-naknadni-po-talasu}
+data %>%
+  group_by(wave) %>%
+  summarise(across(c(attr7_2, attr7_3, you_call),
+                   ~ round(100 * mean(is.na(.x)), 1)),
+            .groups = "drop") %>%
+  print(n = Inf)
+```
+
+Rezultat pokazuje isti obrazac:
+
+- `attr7_2` je u talasima 1–14 prazna u 100% redova, a popunjena je tek u talasima 15–21 (NA od 9,1% do 50%). Pitanje o tome šta je zaista bilo važno pri odlučivanju, dan nakon događaja, postavljano je dakle samo u poslednjih sedam talasa.
+- `attr7_3` je u talasima 1–9 prazna u 100% redova, a u talasima 10–21 delimično popunjena (NA od 22,2% do 71,4%).
+- `you_call` je popunjena u svim talasima, ali samo delimično (NA između 22,2% i 71,4%). Vrednosti za `attr7_3` u talasima 10–21 identične su vrednostima za `you_call`, što znači da su u tim talasima upitnik popunjavale iste osobe.
+
+Posmatrano po učesnicima, bar jedno pitanje iz upitnika nakon 3–4 nedelje popunilo je samo 263 od 551 učesnika, odnosno oko 48%:
+
+```{r odgovorili-nakon-3-nedelje}
+data %>%
+  distinct(iid, .keep_all = TRUE) %>%
+  mutate(odgovorio_3 = if_any(ends_with("_3"), ~ !is.na(.x))) %>%
+  summarise(popunilo = sum(odgovorio_3), ukupno = n())
+```
+
+Visok udeo NA u kolonama sa sufiksom `_3` zato ima dva uzroka: pojedina pitanja nisu postavljena u ranijim talasima, a upitnik nije popunila ni polovina učesnika.
+
+### Nedostajuće vrednosti u ciljnoj promenljivoj i ocenama partnera
+
+Na kraju proveravamo promenljive koje su u središtu analize, a to su odluka `dec` i ocene partnera.
+
+```{r na-kljucne-kolone}
+data %>%
+  summarise(across(c(dec, attr, sinc, intel, fun, amb, shar, like, prob),
+                   ~ round(100 * mean(is.na(.x)), 1))) %>%
+  pivot_longer(everything(), names_to = "kolona", values_to = "procenat_na")
+```
+
+Ciljna promenljiva `dec` nema nijednu nedostajuću vrednost. Ocene partnera imaju malo NA: od 2,4% za `attr` do 4,2% za `fun`, uz dve veće vrednosti, 8,5% za `amb` i 12,7% za `shar`. To je dovoljno malo da ovim kolonama ne moramo da odustajemo od analize, ali ćemo pre modelovanja morati da odlučimo kako da postupimo sa redovima u kojima neka ocena nedostaje.
+
+### Šta ovo znači za dalju analizu
+
+Iz prethodnih rezultata izvodimo nekoliko zaključaka:
+
+- **Naknadne upitnike (`_2` i `_3`) ne koristimo kao ulaz modela.** Pored velikog udela NA, oni su popunjeni nakon događaja, pa ne mogu da služe za predviđanje odluke koja je doneta tokom događaja. Kada bismo ih uključili, model bi koristio informaciju koja u trenutku odluke nije postojala.
+- **Pažnja i kod promenljivih `match` i `dec_o`.** Promenljiva `match` je izvedena iz odluka obe osobe, pa sadrži odluku učesnika (`dec`) koju pokušavamo da predvidimo. Promenljiva `dec_o` je odluka partnera, koja u trenutku odluke učesnika nije poznata.
+- **Kolone `expnum`, `attr4_1`, `attr5_1` i kolone sa `7` u imenu ne možemo koristiti na celom skupu**, jer su prazne u čitavim talasima. Ako ih ipak želimo, analizu moramo ograničiti samo na talase u kojima su popunjene.
+- **Za `shar` (12,7% NA) i `amb` (8,5% NA) treba odlučiti kako postupiti sa nedostajućim ocenama**, jer su to promenljive iz same ciljne analize.
+- **Udeo NA računat po redovima daje veću težinu učesnicima sa više sastanaka.** Kod kolona iz upitnika pre događaja, čija je vrednost ista u svim redovima jednog učesnika, tačniju sliku daje udeo računat po osobi.
