@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="sr"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speed Dating seminar roadmap</title>
+<style>
+:root{--bg:#f6f7f9;--surface:#fff;--fg:#1b2230;--muted:#5d6779;--line:#dde1e8;--accent:#c2365b;--done:#2f7d5b;--code:#eef0f4}
+@media (prefers-color-scheme: dark){:root{--bg:#12151c;--surface:#1a1f29;--fg:#e6e9ef;--muted:#9aa3b4;--line:#2b3240;--accent:#ef6f92;--done:#5cc394;--code:#232a36;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;padding:0 16px 48px}
+main{max-width:820px;margin:0 auto}
+header{padding:28px 0 8px}
+h1{font-size:26px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0}
+.bar{position:sticky;top:0;background:var(--bg);padding:12px 0;border-bottom:1px solid var(--line);margin-bottom:16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.track{flex:1;min-width:160px;height:8px;background:var(--line);border-radius:99px;overflow:hidden}
+.fill{height:100%;background:var(--done);width:0}
+#count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+button{font:inherit;font-weight:600;padding:8px 14px;border-radius:8px;border:0;background:var(--accent);color:#fff;cursor:pointer}
+button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+#msg{font-size:13px;color:var(--muted)}
+.phase{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px 16px 12px;margin-bottom:12px}
+.phase.complete{border-color:var(--done)}
+h2{font-size:16px;display:flex;justify-content:space-between;gap:12px;margin:12px 0 6px}
+.cnt{font-size:12px;font-weight:500;color:var(--muted)}
+ul{list-style:none;margin:0;padding:0}
+li{padding:3px 0}
+li.l1{padding-left:28px}
+label{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+input{width:17px;height:17px;margin-top:3px;accent-color:var(--done);flex:none}
+input:checked + span{color:var(--muted);text-decoration:line-through}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88em;background:var(--code);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Speed Dating seminar roadmap</h1>
+    <p class="sub">Tick a task, press <strong>Sačuvaj</strong>, overwrite <code>roadmap.html</code> in the repo, then commit and push.</p>
+  </header>
+  <div class="bar">
+    <span id="count"></span>
+    <div class="track"><div class="fill" id="fill"></div></div>
+    <button id="save" type="button">Sačuvaj</button>
+    <span id="msg"></span>
+  </div>
+<!--ITEMS-->
+  <section class="phase">
+    <h2>0. Setup<span class="cnt"></span></h2>
+    <ul>
+      <li class="l0"><label><input type="checkbox" id="t1" checked=""> <span>Proposal sent and approved</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t2" checked=""> <span>Dataset link posted on Teams</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t3" checked=""> <span>GitHub repo created, first commit pushed</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t4" checked=""> <span>Folder structure (<code>data/raw</code>, <code>data/clean</code>, <code>Seminarski.Rmd</code>, <code>vezbe.R</code>, <code>README.md</code>, <code>.gitignore</code>)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t5" checked=""> <span>Empty Rmd knits</span></label></li>
+    </ul>
+  </section>
+  <section class="phase">
+    <h2>1. Understand the data<span class="cnt"></span></h2>
+    <ul>
+      <li class="l0"><label><input type="checkbox" id="t6" checked=""> <span><strong>p1-1</strong> Uvod: the experiment, goals, limitation</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t7" checked=""> <span><strong>p1-2</strong> Struktura podataka: one row = one date, <code>iid</code> vs <code>id</code>, why it matters</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t8" checked=""> <span><strong>Opis kolona</strong>: apply the 7 fixes (<code>round</code>, scale in waves 6–9, <code>_s</code> scale, <code>attr2_3</code>, race, <code>samerace</code>, remove the list of column names)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t9"> <span><strong>p1-3</strong> Size of the data</span></label></li>
+      <li class="l1"><label><input type="checkbox" id="t10"> <span>number of people (<code>n_distinct(iid)</code>) and events (<code>n_distinct(wave)</code>)</span></label></li>
+      <li class="l1"><label><input type="checkbox" id="t11"> <span>women and men, <strong>one row per person</strong> (<code>distinct(iid, .keep_all = TRUE)</code>)</span></label></li>
+      <li class="l1"><label><input type="checkbox" id="t12"> <span><code>round</code> check: rows per person vs <code>round</code>. Explain the 14 people in wave 17.</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t13"> <span><strong>p1-4</strong> Missing values for every column</span></label></li>
+      <li class="l1"><label><input type="checkbox" id="t14"> <span>table: share of NA per column, sorted from highest</span></label></li>
+      <li class="l1"><label><input type="checkbox" id="t15"> <span>count of columns with no NA / under 10% / 10–50% / over 50%</span></label></li>
+      <li class="l1"><label><input type="checkbox" id="t16"> <span>for suspicious columns (<code>expnum</code>, <code>attr4_1</code>, <code>attr5_1</code>), check NA by wave</span></label></li>
+      <li class="l1"><label><input type="checkbox" id="t17"> <span>interpretation: which groups of columns are mostly empty, and why</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t18"> <span><strong>p1-5</strong> Column selection: target / identifiers / inputs, with a reason for each excluded group</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t19"> <span><strong>p1-6</strong> "Izbor kolona" section in the report (<code>select()</code>, <code>dim()</code> before and after)</span></label></li>
+    </ul>
+  </section>
+  <section class="phase">
+    <h2>2. Cleaning<span class="cnt"></span></h2>
+    <ul>
+      <li class="l0"><label><input type="checkbox" id="t20"> <span>Duplicates (whole rows and <code>iid</code>–<code>pid</code> pairs)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t21"> <span>Codes → factors (<code>gender</code>, <code>race</code>, <code>race_o</code>, <code>goal</code>, <code>field_cd</code>); note the reversed scale of <code>date</code>/<code>go_out</code></span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t22"> <span><code>met</code> by wave → recode</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t23"> <span>Ratings outside 1–10 (zeros) → NA</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t24"> <span><code>*1_1</code> sum = 100 check, then normalization</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t25"> <span>Save the cleaned dataframe to <code>data/clean/</code></span></label></li>
+    </ul>
+  </section>
+  <section class="phase">
+    <h2>3. Missing values<span class="cnt"></span></h2>
+    <ul>
+      <li class="l0"><label><input type="checkbox" id="t26"> <span>NA in the selected columns (<code>naniar::gg_miss_var</code>)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t27"> <span>Structural vs skipped</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t28"> <span>Concentrated in certain people?</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t29"> <span>χ² test: is missingness related to <code>dec</code>?</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t30"> <span>Decision: indicators, imputation only after the split</span></label></li>
+    </ul>
+  </section>
+  <section class="phase">
+    <h2>4. Outliers<span class="cnt"></span></h2>
+    <ul>
+      <li class="l0"><label><input type="checkbox" id="t31"> <span>Age per person, IQR, decision</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t32"> <span>Ranges of ratings and <code>int_corr</code></span></label></li>
+    </ul>
+  </section>
+  <section class="phase">
+    <h2>5. EDA<span class="cnt"></span></h2>
+    <ul>
+      <li class="l0"><label><input type="checkbox" id="t33"> <span>Distribution of <code>dec</code> overall and by gender</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t34"> <span>Univariate plots</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t35"> <span>Yes rate by <code>attr</code>, by gender</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t36"> <span>Ratings for "yes" vs "no"</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t37"> <span>Correlations of ratings</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t38"> <span>Stated vs actual preferences</span></label></li>
+    </ul>
+  </section>
+  <section class="phase">
+    <h2>6. Statistical tests (α = 0.05)<span class="cnt"></span></h2>
+    <ul>
+      <li class="l0"><label><input type="checkbox" id="t39"> <span>H1: men say yes more often (χ²)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t40"> <span>H2: attractiveness matters more to men (logistic regression, <code>gender × attr</code>)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t41"> <span>H3: same race / age gap (χ², Mann-Whitney)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t42"> <span>H4: stated vs actual preferences</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t43"> <span>Note on non-independent observations</span></label></li>
+    </ul>
+  </section>
+  <section class="phase">
+    <h2>7. Feature engineering<span class="cnt"></span></h2>
+    <ul>
+      <li class="l0"><label><input type="checkbox" id="t44"> <span><code>age_gap</code></span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t45"> <span><code>rating_mean</code>, rating relative to the rater's own average</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t46"> <span><code>weighted_score</code></span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t47"> <span><code>order_rel</code></span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t48"> <span>Evidence that each new variable helps</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t49"> <span>Check that none of them leak the target</span></label></li>
+    </ul>
+  </section>
+  <section class="phase">
+    <h2>8. Machine learning<span class="cnt"></span></h2>
+    <ul>
+      <li class="l0"><label><input type="checkbox" id="t50"> <span>Split by person (<code>group_initial_split(by = iid)</code>, <code>set.seed</code>)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t51"> <span>Baseline (majority class)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t52"> <span>Logistic regression, Random Forest, XGBoost</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t53"> <span>Grouped CV (<code>group_vfold_cv</code>)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t54"> <span>Metrics on the test set only (accuracy, F1, ROC AUC, confusion matrix)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t55"> <span>Model with and without <code>like</code>/<code>prob</code></span></label></li>
+    </ul>
+  </section>
+  <section class="phase">
+    <h2>9. Model iterations<span class="cnt"></span></h2>
+    <ul>
+      <li class="l0"><label><input type="checkbox" id="t56"> <span>Imputation strategies</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t57"> <span>Feature selection</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t58"> <span>Transformations</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t59"> <span>Class imbalance</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t60"> <span>Hyperparameter tuning (<code>tune_grid</code>)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t61"> <span>Comparison table of all attempts</span></label></li>
+    </ul>
+  </section>
+  <section class="phase">
+    <h2>10. Finish and defend<span class="cnt"></span></h2>
+    <ul>
+      <li class="l0"><label><input type="checkbox" id="t62"> <span>Zaključak</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t63"> <span>README</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t64"> <span>Rmd knits from scratch, numbers in the text match the output</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t65"> <span>Submit at least 5 days before the exam</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t66"> <span>Fix the professor's comments</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t67"> <span>Both of us can explain every part</span></label></li>
+    </ul>
+  </section>
+<!--/ITEMS-->
+</main>
+<script>
+const boxes = [...document.querySelectorAll('input[type=checkbox]')];
+const msg = document.getElementById('msg');
+
+function update(){
+  const done = boxes.filter(b => b.checked).length;
+  document.getElementById('count').textContent = done + ' / ' + boxes.length;
+  document.getElementById('fill').style.width = (done / boxes.length * 100) + '%';
+  document.querySelectorAll('.phase').forEach(p => {
+    const b = [...p.querySelectorAll('input')];
+    const d = b.filter(x => x.checked).length;
+    p.querySelector('.cnt').textContent = d + '/' + b.length;
+    p.classList.toggle('complete', d === b.length);
+  });
+}
+boxes.forEach(b => b.addEventListener('change', () => { update(); msg.textContent = 'Nesačuvane izmene'; }));
+update();
+
+function currentHtml(){
+  // Write the current ticks into the HTML, so the saved file opens with them.
+  boxes.forEach(b => b.checked ? b.setAttribute('checked', '') : b.removeAttribute('checked'));
+  const clone = document.documentElement.cloneNode(true);
+  clone.querySelector('#msg').textContent = '';
+  clone.querySelectorAll('.cnt').forEach(c => c.textContent = '');
+  clone.querySelectorAll('.phase').forEach(p => p.classList.remove('complete'));
+  clone.querySelector('#count').textContent = '';
+  clone.querySelector('#fill').removeAttribute('style');
+  return '<!doctype html>\n' + clone.outerHTML;
+}
+
+let fileHandle = null;
+document.getElementById('save').addEventListener('click', async () => {
+  const html = currentHtml();
+  // Chrome and Edge: overwrite the file directly. The first time, pick roadmap.html in the repo folder.
+  if (window.showSaveFilePicker){
+    try{
+      if (!fileHandle) fileHandle = await showSaveFilePicker({suggestedName: 'roadmap.html', types: [{description: 'HTML', accept: {'text/html': ['.html']}}]});
+      const w = await fileHandle.createWritable();
+      await w.write(html); await w.close();
+      msg.textContent = 'Sačuvano. Sada commit i push.';
+      return;
+    }catch(e){
+      if (e.name === 'AbortError'){ msg.textContent = 'Čuvanje otkazano'; return; }
+    }
+  }
+  // Other browsers: download the file, then replace roadmap.html in the repo with it.
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([html], {type: 'text/html'}));
+  a.download = 'roadmap.html';
+  a.click();
+  msg.textContent = 'Preuzeto. Zameni roadmap.html u repou, pa commit i push.';
+});
+</script>
+
+
+</body></html>

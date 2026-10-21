@@ -83,10 +83,8 @@ Skup podataka ima 8.378 redova i 195 kolona. Opisi kolona preuzeti su iz dokumen
 
 Najpre ispisujemo broj redova, broj kolona i imena svih kolona:
 
-```{r imena-kolona}
-cat("Broj redova:", nrow(data), "\n")
-cat("Broj kolona:", ncol(data), "\n\n")
-cat(names(data), fill = 80)
+```{r dimenzije}
+dim(data)
 ```
 
 Zatim proveravamo koliko kolona je kog tipa:
@@ -108,24 +106,24 @@ Pored kolona `field`, `undergra`, `from` i `career`, koje su zaista tekstualne, 
 
 Imena kolona prate dogovor o sufiksima:
 
-| Sufiks | Značenje |
-|:---|:---|
-| `_o` | Podatak o partneru (njegova odluka, ocene, preferencije) |
-| `_1` | Upitnik pre događaja (prijava) |
-| `_s` | Upitnik na sredini događaja |
-| `_2` | Upitnik dan nakon događaja |
-| `_3` | Upitnik 3–4 nedelje nakon događaja |
+| Sufiks | Značenje                                                 |
+|:-------|:---------------------------------------------------------|
+| `_o`   | Podatak o partneru (njegova odluka, ocene, preferencije) |
+| `_1`   | Upitnik pre događaja (prijava)                           |
+| `_s`   | Upitnik na sredini događaja                              |
+| `_2`   | Upitnik dan nakon događaja                               |
+| `_3`   | Upitnik 3–4 nedelje nakon događaja                       |
 
 Broj između imena osobine i sufiksa označava pitanje na koje se kolona odnosi:
 
-| Broj | Pitanje |
-|:---:|:---|
-| 1 | Šta tražiš kod partnera? |
-| 2 | Šta, po tvom mišljenju, traži suprotni pol? |
-| 3 | Kako ocenjuješ sebe? |
-| 4 | Šta, po tvom mišljenju, traže osobe tvog pola? |
-| 5 | Kako misliš da te drugi vide? |
-| 7 | Šta je zaista bilo važno u tvojim odlukama na događaju? |
+| Broj | Pitanje                                                 |
+|:----:|:--------------------------------------------------------|
+|  1   | Šta tražiš kod partnera?                                |
+|  2   | Šta, po tvom mišljenju, traži suprotni pol?             |
+|  3   | Kako ocenjuješ sebe?                                    |
+|  4   | Šta, po tvom mišljenju, traže osobe tvog pola?          |
+|  5   | Kako misliš da te drugi vide?                           |
+|  7   | Šta je zaista bilo važno u tvojim odlukama na događaju? |
 
 Na primer, `attr1_1` predstavlja važnost privlačnosti koju je učesnik naveo pre događaja, dok `attr7_2` predstavlja važnost privlačnosti u njegovim stvarnim odlukama, procenjenu dan nakon događaja.
 
@@ -133,102 +131,103 @@ Zbog razlike između pitanja 1 i 7, odnosno između onoga što učesnik kaže da
 
 ### Identifikacija i organizacija događaja (12 kolona)
 
-- `iid` – jedinstveni broj učesnika u celom skupu.
-- `id` – redni broj učesnika unutar događaja.
-- `gender` – pol (0 = žensko, 1 = muško).
-- `idg` – redni broj učesnika unutar pola na događaju.
-- `condtn` – uslov događaja (1 = ograničen izbor, 2 = neograničen izbor).
-- `wave` – broj događaja (1–21).
-- `round` – broj osoba koje su se upoznale na tom događaju.
-- `position` – broj stola na kome se održao sastanak.
-- `positin1` – broj stola sa kog je učesnik počeo veče.
-- `order` – redni broj sastanka tokom večeri.
-- `partner` – redni broj partnera unutar događaja, odnosno njegov `id`.
-- `pid` – `iid` partnera.
+-   `iid` – jedinstveni broj učesnika u celom skupu.
+-   `id` – redni broj učesnika unutar događaja.
+-   `gender` – pol (0 = žensko, 1 = muško).
+-   `idg` – redni broj učesnika unutar pola na događaju.
+-   `condtn` – uslov događaja (1 = ograničen izbor, 2 = neograničen izbor).
+-   `wave` – broj događaja (1–21).
+-   `round` – broj sastanaka koje je učesnik imao na tom događaju, odnosno broj osoba suprotnog pola na događaju.
+-   `position` – broj stola na kome se održao sastanak.
+-   `positin1` – broj stola sa kog je učesnik počeo veče.
+-   `order` – redni broj sastanka tokom večeri.
+-   `partner` – redni broj partnera unutar događaja, odnosno njegov `id`.
+-   `pid` – `iid` partnera.
 
 ### Ishod sastanka i osobine para (3 kolone)
 
-- `match` – poklapanje (1 = obe osobe rekle su „da", 0 = ne).
-- `int_corr` – korelacija ocena interesovanja učesnika i partnera iz upitnika pre događaja.
-- `samerace` – isti rasni/etnički background (1 = da, 0 = ne).
+-   `match` – poklapanje (1 = obe osobe rekle su „da", 0 = ne).
+-   `int_corr` – korelacija ocena interesovanja učesnika i partnera iz upitnika pre događaja.
+-   
+    -   `samerace` – ista rasa ili etnička pripadnost učesnika i partnera (1 = da, 0 = ne).
 
 ### Podaci o partneru (18 kolona)
 
-- `age_o`, `race_o` – starost i rasa partnera.
-- `pf_o_att`, `pf_o_sin`, `pf_o_int`, `pf_o_fun`, `pf_o_amb`, `pf_o_sha` – šta partner traži, odnosno njegove preferencije iz upitnika `attr1_1`, raspoređene na šest osobina sa ukupno 100 poena.
-- `dec_o` – odluka partnera te večeri.
-- `attr_o`, `sinc_o`, `intel_o`, `fun_o`, `amb_o`, `shar_o` – ocene koje je partner dao učesniku (1–10).
-- `like_o`, `prob_o`, `met_o` – koliko se partneru učesnik sviđa, koliko partner misli da će učesnik reći „da" i da li su se ranije poznavali.
+-   `age_o`, `race_o` – starost i rasa partnera.
+-   `pf_o_att`, `pf_o_sin`, `pf_o_int`, `pf_o_fun`, `pf_o_amb`, `pf_o_sha` – šta partner traži, odnosno njegove preferencije iz upitnika `attr1_1`, raspoređene na šest osobina sa ukupno 100 poena.
+-   `dec_o` – odluka partnera te večeri.
+-   `attr_o`, `sinc_o`, `intel_o`, `fun_o`, `amb_o`, `shar_o` – ocene koje je partner dao učesniku (1–10).
+-   `like_o`, `prob_o`, `met_o` – koliko se partneru učesnik sviđa, koliko partner misli da će učesnik reći „da" i da li su se ranije poznavali.
 
 **Napomena:** Ključ eksplicitno opisuje samo `attr_o`; opis kolona `like_o`, `prob_o` i `met_o` izveden je analogno kolonama `like`, `prob` i `met`.
 
 ### Demografski podaci i profil učesnika (17 kolona, upitnik pre događaja)
 
-- `age` – starost.
-- `field`, `field_cd` – oblast studija (tekst i šifra 1–18, npr. 1 = pravo, 8 = biznis/ekonomija/finansije).
-- `undergra` – škola na kojoj je učesnik završio osnovne studije.
-- `mn_sat` – medijana SAT rezultata te škole, prema Barron's vodiču; autori je koriste kao meru inteligencije.
-- `tuition` – školarina te škole.
-- `race` – rasa (1 = crnac/afroamerikanac, 2 = evropski/kavkaski Amerikanac, 3 = latino, 4 = azijski/pacifički, 5 = starosedeoci Amerike, 6 = ostalo).
-- `imprace`, `imprelig` – koliko je važno da partner bude iste rase, odnosno vere (1–10).
-- `from`, `zipcode` – odakle učesnik potiče i poštanski broj mesta odrastanja.
-- `income` – medijana prihoda domaćinstva za taj poštanski broj; vrednost nedostaje ako je učesnik iz inostranstva ili nije uneo broj.
-- `goal` – glavni razlog učešća (1 = zabavno veče, 2 = upoznavanje ljudi, 3 = da dobije sastanak, 4 = ozbiljna veza, 5 = „da kažem da sam probao", 6 = ostalo).
-- `date` – koliko često učesnik izlazi na sastanke.
-- `go_out` – koliko često učesnik izlazi uopšte.
-- `career`, `career_c` – željena karijera (tekst i šifra 1–17).
+-   `age` – starost.
+-   `field`, `field_cd` – oblast studija (tekst i šifra 1–18, npr. 1 = pravo, 8 = biznis/ekonomija/finansije).
+-   `undergra` – škola na kojoj je učesnik završio osnovne studije.
+-   `mn_sat` – medijana SAT rezultata te škole, prema Barron's vodiču; autori je koriste kao meru inteligencije.
+-   `tuition` – školarina te škole.
+-   `race` – rasa (1 = 1 = afroamerička, 2 = evropski/kavkaski Amerikanac, 3 = latino, 4 = azijski/pacifički, 5 = starosedeoci Amerike, 6 = ostalo).
+-   `imprace`, `imprelig` – koliko je važno da partner bude iste rase, odnosno vere (1–10).
+-   `from`, `zipcode` – odakle učesnik potiče i poštanski broj mesta odrastanja.
+-   `income` – medijana prihoda domaćinstva za taj poštanski broj; vrednost nedostaje ako je učesnik iz inostranstva ili nije uneo broj.
+-   `goal` – glavni razlog učešća (1 = zabavno veče, 2 = upoznavanje ljudi, 3 = da dobije sastanak, 4 = ozbiljna veza, 5 = „da kažem da sam probao", 6 = ostalo).
+-   `date` – koliko često učesnik izlazi na sastanke.
+-   `go_out` – koliko često učesnik izlazi uopšte.
+-   `career`, `career_c` – željena karijera (tekst i šifra 1–17).
 
 **Važna napomena:** Kod promenljivih `date` i `go_out` skala ide u suprotnom smeru: 1 = više puta nedeljno, a 7 = skoro nikad.
 
 ### Interesovanja i očekivanja (19 kolona)
 
-- `sports`, `tvsports`, `exercise`, `dining`, `museums`, `art`, `hiking`, `gaming`, `clubbing`, `reading`, `tv`, `theater`, `movies`, `concerts`, `music`, `shopping`, `yoga` – koliko učesnika zanima svaka aktivnost (1–10).
-- `exphappy` – koliko učesnik očekuje da će biti zadovoljan ljudima koje upozna (1–10).
-- `expnum` – koliko od 20 osoba učesnik očekuje da će biti zainteresovano za njega.
+-   `sports`, `tvsports`, `exercise`, `dining`, `museums`, `art`, `hiking`, `gaming`, `clubbing`, `reading`, `tv`, `theater`, `movies`, `concerts`, `music`, `shopping`, `yoga` – koliko učesnika zanima svaka aktivnost (1–10).
+-   `exphappy` – koliko učesnik očekuje da će biti zadovoljan ljudima koje upozna (1–10).
+-   `expnum` – koliko od 20 osoba učesnik očekuje da će biti zainteresovano za njega.
 
 ### Upitnik pre događaja (28 kolona, sufiks `_1`)
 
-- `attr1_1`, `sinc1_1`, `intel1_1`, `fun1_1`, `amb1_1`, `shar1_1` – šta učesnik traži kod partnera.
-- `attr4_1` … `shar4_1` – šta učesnik misli da traže osobe njegovog pola.
-- `attr2_1` … `shar2_1` – šta učesnik misli da traži suprotni pol.
-- `attr3_1`, `sinc3_1`, `fun3_1`, `intel3_1`, `amb3_1` – samoprocena (1–10).
-- `attr5_1`, `sinc5_1`, `intel5_1`, `fun5_1`, `amb5_1` – kako učesnik misli da ga drugi vide (1–10).
+-   `attr1_1`, `sinc1_1`, `intel1_1`, `fun1_1`, `amb1_1`, `shar1_1` – šta učesnik traži kod partnera.
+-   `attr4_1` … `shar4_1` – šta učesnik misli da traže osobe njegovog pola.
+-   `attr2_1` … `shar2_1` – šta učesnik misli da traži suprotni pol.
+-   `attr3_1`, `sinc3_1`, `fun3_1`, `intel3_1`, `amb3_1` – samoprocena (1–10).
+-   `attr5_1`, `sinc5_1`, `intel5_1`, `fun5_1`, `amb5_1` – kako učesnik misli da ga drugi vide (1–10).
 
-Pitanja 1, 2 i 4 u talasima 1–5 i 10–21 rešavaju se raspodelom 100 poena, dok se u talasima 6–9 koriste ocene od 1 do 10. Zbog toga vrednosti iz ova dva režima nisu direktno uporedive. Pitanja 3 i 5 nemaju varijantu za zajednička interesovanja.
+Prema ključu, pitanja 1, 2 i 4 rešavaju se raspodelom 100 poena, osim u talasima 6–9, gde su korišćene ocene od 1 do 10. Provera zbira odgovora po učesniku pokazuje da su vrednosti iz talasa 6–9 u ovom skupu već preračunate na skalu od 100 poena (zbir je između 99,98 i 100,02), pa su odgovori iz svih talasa uporedivi. Pitanja 3 i 5 nemaju varijantu za zajednička interesovanja.
 
 ### Odluka i ocene nakon svakog sastanka (11 kolona)
 
-- `dec` – odluka učesnika (1 = da, 0 = ne); ciljna promenljiva.
-- `attr`, `sinc`, `intel`, `fun`, `amb`, `shar` – ocene partnera (1–10).
-- `like` – koliko se učesniku partner sviđa uopšte (1–10).
-- `prob` – koliko učesnik misli da će partner reći „da" (1–10).
-- `met` – da li je učesnik već poznavao partnera.
-- `match_es` – koliko poklapanja učesnik očekuje da će dobiti.
+-   `dec` – odluka učesnika (1 = da, 0 = ne); ciljna promenljiva.
+-   `attr`, `sinc`, `intel`, `fun`, `amb`, `shar` – ocene partnera (1–10).
+-   `like` – koliko se učesniku partner sviđa uopšte (1–10).
+-   `prob` – koliko učesnik misli da će partner reći „da" (1–10).
+-   `met` – da li je učesnik već poznavao partnera.
+-   `match_es` – koliko poklapanja učesnik očekuje da će dobiti.
 
 **Napomena:** Prema ključu, za `met` važi 1 = da, 2 = ne, ali u podacima se pojavljuju i vrednosti od 0 do 8. Zato ovu promenljivu treba proveriti pre upotrebe.
 
 ### Upitnik na sredini događaja (11 kolona, sufiks `_s`)
 
-- `attr1_s` … `shar1_s` – važnost šest osobina kod partnera (1–10).
-- `attr3_s` … `amb3_s` – samoprocena (1–10).
+-   `attr1_s` … `shar1_s` – važnost šest osobina kod partnera; skala nije ujednačena (vrednosti idu do 95, a zbir po učesniku je između 30 i 120).
+-   `attr3_s` … `amb3_s` – samoprocena (1–10).
 
 ### Upitnik dan nakon događaja (37 kolona, sufiks `_2`)
 
-- `satis_2` – zadovoljstvo ljudima koje je učesnik upoznao (1–10).
-- `length` – da li su četiri minuta bila premalo (1), previše (2) ili taman (3).
-- `numdat_2` – da li je broj sastanaka bio premali (1), prevelik (2) ili taman (3).
-- `attr7_2` … `shar7_2` – šta je zaista bilo važno u odlukama učesnika (100 poena).
-- `attr1_2` … `shar1_2`, `attr4_2` … `shar4_2`, `attr2_2` … `shar2_2`, `attr3_2` … `amb3_2`, `attr5_2` … `amb5_2` – ista pitanja kao u upitniku pre događaja.
+-   `satis_2` – zadovoljstvo ljudima koje je učesnik upoznao (1–10).
+-   `length` – da li su četiri minuta bila premalo (1), previše (2) ili taman (3).
+-   `numdat_2` – da li je broj sastanaka bio premali (1), prevelik (2) ili taman (3).
+-   `attr7_2` … `shar7_2` – šta je zaista bilo važno u odlukama učesnika (100 poena).
+-   `attr1_2` … `shar1_2`, `attr4_2` … `shar4_2`, `attr2_2` … `shar2_2`, `attr3_2` … `amb3_2`, `attr5_2` … `amb5_2` – ista pitanja kao u upitniku pre događaja.
 
 ### Upitnik 3–4 nedelje kasnije (39 kolona, sufiks `_3`)
 
-- `you_call` – koliko je poklapanja učesnik kontaktirao radi dogovora o sastanku.
-- `them_cal` – koliko je poklapanja kontaktiralo učesnika.
-- `date_3` – da li je učesnik izašao na sastanak sa nekim poklapanjem.
-- `numdat_3` – sa koliko poklapanja je učesnik izašao.
-- `num_in_3` – dodatno pitanje o sastancima nakon događaja; ključ ne precizira tačno šta meri.
-- `attr7_3` … `shar7_3` – šta je zaista bilo važno u odlukama (100 poena).
-- `attr1_3` … `shar1_3`, `attr4_3` … `shar4_3`, `attr2_3` … `shar2_3` (1–10), `attr3_3` … `amb3_3`, `attr5_3` … `amb5_3` – ista pitanja kao ranije.
+-   `you_call` – koliko je poklapanja učesnik kontaktirao radi dogovora o sastanku.
+-   `them_cal` – koliko je poklapanja kontaktiralo učesnika.
+-   `date_3` – da li je učesnik izašao na sastanak sa nekim poklapanjem.
+-   `numdat_3` – sa koliko poklapanja je učesnik izašao.
+-   `num_in_3` – dodatno pitanje o sastancima nakon događaja; ključ ne precizira tačno šta meri.
+-   `attr7_3` … `shar7_3` – šta je zaista bilo važno u odlukama (100 poena).
+-   `attr1_3` … `shar1_3`, `attr4_3` … `shar4_3`, `attr2_3` … `shar2_3`, `attr3_3` … `amb3_3`, `attr5_3` … `amb5_3` – ista pitanja kao ranije.
 
 **Napomena:** U ključu piše da je za `date_3` vrednost 1 = da, a 2 = ne, ali u podacima se pojavljuju vrednosti 0 i 1. Ovo treba proveriti pre upotrebe promenljive.
 
