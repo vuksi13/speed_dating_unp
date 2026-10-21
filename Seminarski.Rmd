@@ -232,3 +232,67 @@ Prema ključu, pitanja 1, 2 i 4 rešavaju se raspodelom 100 poena, osim u talasi
 **Napomena:** U ključu piše da je za `date_3` vrednost 1 = da, a 2 = ne, ali u podacima se pojavljuju vrednosti 0 i 1. Ovo treba proveriti pre upotrebe promenljive.
 
 Veliki deo kolona ima mnogo nedostajućih vrednosti. Naknadni upitnici (`_2`, `_3`) nisu popunjeni za sve učesnike, a, na primer, vrednost promenljive `num_in_3` nedostaje u oko 92% redova.
+
+## Osnovne karakteristike skupa
+
+Pre čišćenja i analize proveravamo koliko je učesnika i događaja, da li je uzorak uravnotežen po polu i da li su podaci potpuni, odnosno da li svaki učesnik ima onoliko redova koliko je imao sastanaka.
+
+```{r broj-ucesnika}
+broj_ljudi <- n_distinct(data$iid)
+broj_dogadjaja <- n_distinct(data$wave)
+
+broj_ljudi
+broj_dogadjaja
+```
+
+U skupu je `r broj_ljudi` učesnika na `r broj_dogadjaja` događaja. Iako skup ima `r format(nrow(data), big.mark = ".")` redova, jedinica analize za većinu zaključaka je učesnik, a ne red.
+
+Broj žena i muškaraca računamo na nivou učesnika, uzimajući po jedan red za svaku osobu, jer bi se inače učesnik sa više sastanaka računao više puta:
+
+```{r pol}
+data %>%
+  distinct(iid, .keep_all = TRUE) %>%
+  mutate(pol = if_else(gender == 0, "Žena", "Muškarac")) %>%
+  count(pol)
+```
+
+Uzorak čini 274 žene i 277 muškaraca, pa je uravnotežen po polu, što je važno za poređenje muškaraca i žena u nastavku rada.
+
+Broj sastanaka po učesniku:
+
+```{r sastanci-po-osobi}
+sastanci_po_osobi <- data %>%
+  count(iid)
+
+summary(sastanci_po_osobi$n)
+```
+
+Učesnici su imali od 5 do 22 sastanka, sa medijanom od 16. Razlika potiče od toga što su događaji bili različite veličine: svaki učesnik je upoznao sve osobe suprotnog pola na svom događaju, a na najmanjem događaju bilo je 10 učesnika, a na najvećem 44. Zbog toga učesnici sa više sastanaka imaju veći uticaj na rezultate ako se računa po redovima, što je još jedan razlog da se podela na trening i test skup radi po učesniku.
+
+### Provera potpunosti podataka
+
+Kolona `round` sadrži broj sastanaka koje je učesnik imao na događaju. Ako su podaci potpuni, broj redova svakog učesnika treba da bude jednak vrednosti `round`:
+
+```{r provera-round}
+provera <- data %>%
+  count(iid) %>%
+  left_join(distinct(data, iid, round, wave, gender), by = "iid") %>%
+  mutate(poklapa_se = n == round)
+
+provera %>% count(poklapa_se)
+```
+
+Za 537 od 551 učesnika broj redova odgovara broju sastanaka. Svih 14 odstupanja potiče sa istog događaja:
+
+```{r provera-talas-17}
+provera %>%
+  filter(!poklapa_se) %>%
+  count(wave, gender, round, n)
+
+data %>%
+  filter(wave == 17) %>%
+  distinct(iid, gender) %>%
+  count(gender)
+```
+
+Na događaju 17 bilo je 10 žena i 14 muškaraca. Žene imaju po 14 sastanaka, što odgovara broju muškaraca. Muškarci, međutim, imaju `round` = 11, a u podacima po 10 sastanaka, odnosno svakom nedostaje tačno jedan sastanak. Pošto su muškarci upoznali svih 10 žena koje postoje u podacima, najverovatnije je jedna učesnica bila predviđena za događaj, ali za nju ne postoji nijedan red, jer se nije pojavila, otišla je pre prvog sastanka ili njeni podaci nisu sačuvani. Na osnovu samih podataka ne možemo utvrditi koji je razlog u pitanju. Ovo odstupanje ne utiče na dalju analizu i redove ne uklanjamo, ali pokazuje da je struktura podataka u skladu sa opisom eksperimenta.
