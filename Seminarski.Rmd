@@ -233,10 +233,45 @@ Prema ključu, pitanja 1, 2 i 4 rešavaju se raspodelom 100 poena, osim u talasi
 
 Veliki deo kolona ima mnogo nedostajućih vrednosti. Naknadni upitnici (`_2`, `_3`) nisu popunjeni za sve učesnike, a, na primer, vrednost promenljive `num_in_3` nedostaje u oko 92% redova.
 
+## Osnovne karakteristike skupa
+
+Pre čišćenja i analize proveravamo koliko je učesnika i događaja, da li je uzorak uravnotežen po polu i da li su podaci potpuni, odnosno da li svaki učesnik ima onoliko redova koliko je imao sastanaka.
+
+```{r broj-ucesnika}
+broj_ljudi <- n_distinct(data$iid)
+broj_dogadjaja <- n_distinct(data$wave)
+
+broj_ljudi
+broj_dogadjaja
+```
+
+U skupu je `r broj_ljudi` učesnika na `r broj_dogadjaja` događaja. Iako skup ima `r format(nrow(data), big.mark = ".")` redova, jedinica analize za većinu zaključaka je učesnik, a ne red.
+
+Broj žena i muškaraca računamo na nivou učesnika, uzimajući po jedan red za svaku osobu, jer bi se inače učesnik sa više sastanaka računao više puta:
+
+```{r pol}
+data %>%
+  distinct(iid, .keep_all = TRUE) %>%
+  mutate(pol = if_else(gender == 0, "Žena", "Muškarac")) %>%
+  count(pol)
+```
+
+Uzorak čini 274 žene i 277 muškaraca, pa je uravnotežen po polu, što je važno za poređenje muškaraca i žena u nastavku rada.
+
+Broj sastanaka po učesniku:
+
+```{r sastanci-po-osobi}
+sastanci_po_osobi <- data %>%
+  count(iid)
+
+summary(sastanci_po_osobi$n)
+```
+
+Učesnici su imali od 5 do 22 sastanka, sa medijanom od 16. Razlika potiče od toga što su događaji bili različite veličine: svaki učesnik je upoznao sve osobe suprotnog pola na svom događaju, a na najmanjem događaju bilo je 10 učesnika, a na najvećem 44. Zbog toga učesnici sa više sastanaka imaju veći uticaj na rezultate ako se računa po redovima, što je još jedan razlog da se podela na trening i test skup radi po učesniku.
 
 ## Nedostajuće vrednosti po kolonama
 
-Nedostajuće vrednosti (NA) su polja u kojima nema podatka. Pre bilo kakvog modelovanja moramo da znamo gde ih ima i zašto, jer od uzroka zavisi šta ćemo s njima. Kolonu u kojoj je pitanje bilo postavljeno, a poneki učesnik ga je preskočio, možemo u nekim slučajevima dopuniti. Kolonu koja je prazna zato što pitanje u tom delu eksperimenta uopšte nije postavljeno ne možemo smisleno popuniti. U ovom poglavlju udeo NA računamo po redovima, odnosno po sastancima.
+Nedostajuće vrednosti su polja u kojima nema podatka. Pre bilo kakvog modelovanja moramo da znamo gde ih ima i zašto, jer od uzroka zavisi šta ćemo s njima. Kolonu u kojoj je pitanje bilo postavljeno, a poneki učesnik ga je preskočio, možemo u nekim slučajevima dopuniti. Kolonu koja je prazna zato što pitanje u tom delu eksperimenta uopšte nije postavljeno ne možemo smisleno popuniti. U ovom poglavlju udeo NA računamo po redovima, odnosno po sastancima.
 
 ### Procenat nedostajućih vrednosti po kolonama
 
@@ -379,3 +414,5 @@ Iz prethodnih rezultata izvodimo nekoliko zaključaka:
 - **Kolone `expnum`, `attr4_1`, `attr5_1` i kolone sa `7` u imenu ne možemo koristiti na celom skupu**, jer su prazne u čitavim talasima. Ako ih ipak želimo, analizu moramo ograničiti samo na talase u kojima su popunjene.
 - **Za `shar` (12,7% NA) i `amb` (8,5% NA) treba odlučiti kako postupiti sa nedostajućim ocenama**, jer su to promenljive iz same ciljne analize.
 - **Udeo NA računat po redovima daje veću težinu učesnicima sa više sastanaka.** Kod kolona iz upitnika pre događaja, čija je vrednost ista u svim redovima jednog učesnika, tačniju sliku daje udeo računat po osobi.
+
+
