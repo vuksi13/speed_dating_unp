@@ -55,6 +55,15 @@ Pored predviđanja, istražujemo i:
 -   da li se muškarci i žene razlikuju u tome šta im je važno;
 -   da li se ono što učesnici kažu da traže poklapa sa onim na osnovu čega zaista odlučuju.
 
+Na osnovu ovih pitanja postavljamo četiri hipoteze, koje proveravamo statističkim testovima na nivou značajnosti α = 0,05:
+
+1.  **H1:** Muškarci češće od žena odgovaraju sa „da”.
+2.  **H2:** Privlačnost partnera ima veći uticaj na odluku muškaraca nego žena.
+3.  **H3:** Učesnici češće odgovaraju sa „da” partnerima iste rase i partnerima manje razlike u godinama.
+4.  **H4:** Ono što učesnici pre događaja navode kao važno razlikuje se od osobina koje zaista utiču na njihovu odluku.
+
+# Opis i priprema podataka
+
 ## Struktura podataka
 
 Svaki red u skupu podataka predstavlja jedan sastanak viđen iz ugla jednog učesnika. Pošto oba učesnika popunjavaju obrazac posle sastanka, svaki sastanak se u skupu pojavljuje dva puta, jednom iz ugla svake osobe. Zato 8.378 redova odgovara približno 4.200 sastanaka.
@@ -453,7 +462,7 @@ Skup ima 195 kolona, ali za cilj našeg rada nisu sve potrebne niti dozvoljene. 
 ### Kolone koje zadržavamo
 
 | Uloga | Kolone |
-|:---|:---|
+|:-----------------------------------|:-----------------------------------|
 | Ciljna promenljiva | `dec` |
 | Identifikatori (nisu ulaz modela) | `iid`, `pid`, `wave` |
 | Učesnik | `gender`, `age`, `race`, `field_cd`, `career_c`, `imprace`, `imprelig`, `goal`, `date`, `go_out`, 17 interesovanja (`sports` … `yoga`) |
@@ -470,7 +479,7 @@ Kolone `like` i `prob` popunjene su na istom obrascu i u istom trenutku kao odlu
 ### Kolone koje isključujemo
 
 | Grupa | Kolone | Razlog |
-|:---|:---|:---|
+|:-----------------------|:-----------------------|:-----------------------|
 | Curenje: ishod i odluka partnera | `match`, `dec_o` | `match` sadrži odluku učesnika; `dec_o` je odluka partnera, koja se saznaje tek sledećeg dana |
 | Curenje: obrazac partnera | `attr_o` … `shar_o`, `like_o`, `prob_o`, `met_o` | Partnerove ocene učesnika; učesnik ih ne vidi kada odlučuje |
 | Curenje: posle odluke | sve kolone sa sufiksima `_2` i `_3`, `match_es` | Popunjene posle sastanka ili na kraju večeri, kada su odluke već donete |
@@ -546,3 +555,270 @@ data %>%
 ```
 
 `pid` nedostaje u 10 redova sa događaja 5, i svi se odnose na istog partnera (redni broj 7 na tom događaju), čiji `iid` nije zabeležen. Svaki od tih 10 učesnika ima samo jedan takav red, pa nedostajući `pid` ne stvara lažne duplikate. Ove redove zadržavamo, jer sadrže odluku i ocene učesnika, a `pid` nije ulaz modela. Jedino ih ne možemo povezati sa odgovarajućim redom iz ugla partnera.
+
+## Tipovi promenljivih
+
+Funkcija `read_csv` određuje tip kolone prema njenom sadržaju. Pošto su sve kolone u skupu `sd` zapisane ciframa, sve su pročitane kao brojevi, iako neke od njih sadrže samo šifre kategorija. Ako bi takve kolone ostale numeričke, analiza bi ih tretirala kao količine: prosečna rasa od 2,7 nema smisla, a model bi pogrešno zaključio da „veća” šifra oblasti studija znači veći ili manji uticaj na odluku. Zato svaku kolonu svrstavamo prema njenom značenju:
+
+| Tip | Kolone | Postupak |
+|:-----------------------|:-----------------------|:-----------------------|
+| Nominalne kategorije | `gender`, `race`, `race_o`, `goal`, `field_cd`, `career_c`, `condtn`, `samerace` | Pretvaramo u faktore sa nazivima iz dokumentacije |
+| Ordinalne | `date`, `go_out` | Ostaju brojevi; skala ide od 1 (više puta nedeljno) do 7 (skoro nikad), pa veća vrednost znači ređe izlaske |
+| Numeričke | starost, ocene 1–10, poeni od 100, interesovanja, `int_corr`, `order` | Bez promene |
+| Identifikatori | `iid`, `pid`, `wave` | Bez promene; ne koriste se u računanju |
+
+Ocene na skali od 1 do 10 su, strogo gledano, takođe ordinalne, ali ih, kao što je uobičajeno, tretiramo kao numeričke jer imaju dovoljno vrednosti. Smer skale za `date` i `go_out` ne menjamo, kako bi vrednosti ostale u skladu sa dokumentacijom. Ciljnu promenljivu `dec` za sada ostavljamo kao broj 0/1, jer njena srednja vrednost direktno daje udeo odgovora „da”; u faktor je pretvaramo u delu sa modelima. Kolonu `met` obrađujemo u sledećem koraku.
+
+Pre konverzije beležimo broj nedostajućih vrednosti u kolonama koje menjamo, jer funkcija `factor()` svaku vrednost koja nije navedena među nivoima bez upozorenja pretvara u NA:
+
+```{r tipovi-pre}
+kategorijske <- c("gender", "race", "race_o", "goal", "field_cd",
+                  "career_c", "condtn", "samerace")
+
+na_pre <- sd %>%
+  summarise(across(all_of(kategorijske), ~ sum(is.na(.x))))
+
+na_pre
+```
+
+```{r tipovi-konverzija}
+rase <- c("Afroamerička", "Evropska/bela", "Latinoamerička",
+          "Azijska", "Indijanska", "Ostalo")
+
+ciljevi <- c("Zabavno veče", "Upoznavanje ljudi", "Da dobije sastanak",
+             "Ozbiljna veza", "Da kaže da je probao", "Ostalo")
+
+oblasti <- c("Pravo", "Matematika", "Društvene nauke/psihologija",
+             "Medicina/farmacija/biotehnologija", "Inženjerstvo",
+             "Engleski jezik/kreativno pisanje/novinarstvo",
+             "Istorija/religija/filozofija", "Biznis/ekonomija/finansije",
+             "Obrazovanje", "Biologija/hemija/fizika", "Socijalni rad",
+             "Neopredeljeni", "Političke nauke/međunarodni odnosi", "Film",
+             "Likovna umetnost", "Jezici", "Arhitektura", "Ostalo")
+
+karijere <- c("Pravnik", "Akademska karijera/istraživanje", "Psiholog",
+              "Lekar/medicina", "Inženjer", "Umetnost/zabava",
+              "Bankarstvo/konsalting/finansije/biznis", "Nekretnine",
+              "Međunarodni/humanitarni poslovi", "Neopredeljeni",
+              "Socijalni rad", "Logopedija", "Politika", "Profesionalni sport",
+              "Ostalo", "Novinarstvo", "Arhitektura")
+
+sd <- sd %>%
+  mutate(
+    gender   = factor(gender, levels = c(0, 1), labels = c("Žena", "Muškarac")),
+    race     = factor(race, levels = 1:6, labels = rase),
+    race_o   = factor(race_o, levels = 1:6, labels = rase),
+    goal     = factor(goal, levels = 1:6, labels = ciljevi),
+    field_cd = factor(field_cd, levels = 1:18, labels = oblasti),
+    career_c = factor(career_c, levels = 1:17, labels = karijere),
+    condtn   = factor(condtn, levels = c(1, 2),
+                      labels = c("Ograničen izbor", "Neograničen izbor")),
+    samerace = factor(samerace, levels = c(0, 1), labels = c("Ne", "Da"))
+  )
+```
+
+Proveravamo da se broj nedostajućih vrednosti nije promenio:
+
+```{r tipovi-provera}
+na_posle <- sd %>%
+  summarise(across(all_of(kategorijske), ~ sum(is.na(.x))))
+
+all(na_pre == na_posle)
+```
+
+Rezultat `TRUE` potvrđuje da su sve vrednosti iz podataka obuhvaćene nivoima, odnosno da konverzija nije stvorila nove nedostajuće vrednosti. Na primer, raspodela učesnika po rasi sada se prikazuje nazivima umesto šiframa:
+
+```{r tipovi-primer}
+sd %>%
+  distinct(iid, .keep_all = TRUE) %>%
+  count(race)
+```
+
+Nijedan učesnik ne pripada kategoriji „Indijanska”, pa je njen broj 0. Nivo zadržavamo jer je deo šifarnika; ako u modelima bude smetao, uklonićemo ga funkcijom `droplevels()`.
+
+## Promenljiva `met`
+
+Promenljiva `met` pokazuje da li je učesnik poznavao partnera pre događaja. Prema dokumentaciji, 1 znači „da”, a 2 „ne”. Proveravamo da li podaci odgovaraju tom opisu:
+
+```{r met-vrednosti}
+sd %>%
+  count(met)
+```
+
+Pored vrednosti 1 i 2, u podacima se pojavljuje 4.047 nula, koje dokumentacija ne pominje, kao i 8 vrednosti (3, 5, 6, 7 i 8) koje ne postoje u šifarniku. Da bismo videli odakle potiču nule, posmatramo vrednosti po događajima:
+
+```{r met-po-talasu}
+sd %>%
+  count(wave, met) %>%
+  pivot_wider(names_from = met, values_from = n,
+              values_fill = 0, names_sort = TRUE)
+```
+
+Događaji 1–6, 8, 9 i 15–17 koriste vrednosti 1 i 2, dok događaji 7, 10–14 i 18–21 koriste 1 i 0, a vrednost 2 se u njima skoro ne pojavljuje. To ukazuje na to da je na delu događaja odgovor „ne” zabeležen kao 0, a ne kao 2.
+
+Ovu pretpostavku proveravamo nezavisnim izvorom. Na isto pitanje o istom sastanku odgovorio je i partner, u koloni `met_o`, koja u svim događajima koristi šifre 1 i 2. Ako 0 zaista znači „ne”, partner bi u tim slučajevima trebalo da je odgovorio sa 2:
+
+```{r met-provera-partner}
+table(met = data$met, met_o = data$met_o)
+```
+
+Kada je učesnik upisao 0, partner je u 3.895 od 3.926 slučajeva odgovorio „ne” (2), isto kao kada je učesnik upisao 2. Time je potvrđeno da 0 i 2 imaju isto značenje: učesnici se nisu poznavali. Vrednosti 3–8 javljaju se u samo 8 redova, na različitim događajima i bez ikakvog obrasca, pa ih smatramo greškama pri unosu i postavljamo na NA.
+
+Promenljivu prevodimo u faktor sa jednoznačnim značenjem:
+
+```{r met-rekodiranje}
+sd <- sd %>%
+  mutate(met = case_when(
+    met == 1         ~ "Da",
+    met %in% c(0, 2) ~ "Ne",
+    TRUE             ~ NA_character_
+  ),
+  met = factor(met, levels = c("Ne", "Da")))
+
+sd %>%
+  count(met)
+```
+
+Posle rekodiranja, 7.644 sastanka su između osoba koje se nisu poznavale, a 351 između osoba koje su se ranije upoznale, odnosno oko 4% sastanaka. Broj nedostajućih vrednosti porastao je sa 375 na 383, za 8 neispravnih vrednosti.
+
+## Vrednosti van dozvoljenog opsega
+
+Proveravamo da li su sve vrednosti u okviru skale navedene u dokumentaciji. Vrednost van skale, kao što je ocena 0 ili 14 na skali od 1 do 10, nije moguća, pa predstavlja grešku. Ovo se razlikuje od ekstremnih vrednosti, koje su moguće ali neuobičajene i koje obrađujemo u posebnom poglavlju.
+
+Najpre za svaku numeričku kolonu posmatramo najmanju i najveću vrednost:
+
+```{r opseg-pregled}
+sd %>%
+  select(where(is.numeric), -iid, -pid, -wave, -dec) %>%
+  summarise(across(everything(), list(min = ~ min(.x, na.rm = TRUE),
+                                      max = ~ max(.x, na.rm = TRUE)))) %>%
+  pivot_longer(everything(),
+               names_to = c("kolona", ".value"),
+               names_pattern = "(.*)_(min|max)$")
+```
+
+Većina kolona je u okviru svoje skale: samoprocene (`attr3_1` … `amb3_1`) su između 2 i 10, preferencije između 0 i 100 poena, `date` i `go_out` između 1 i 7, a `int_corr` između −0,83 i 0,91. Odstupanja postoje u kolonama čija je skala od 1 do 10: u ocenama partnera, u interesovanjima i u koloni `imprace`. Za te kolone brojimo vrednosti van skale:
+
+```{r opseg-brojanje}
+skala_1_10 <- c("attr", "sinc", "intel", "fun", "amb", "shar", "like", "prob",
+                interesovanja, "imprace", "imprelig",
+                "attr3_1", "sinc3_1", "intel3_1", "fun3_1", "amb3_1")
+
+van_opsega <- sd %>%
+  summarise(across(all_of(skala_1_10),
+                   ~ sum(.x < 1 | .x > 10, na.rm = TRUE))) %>%
+  pivot_longer(everything(), names_to = "kolona", values_to = "broj") %>%
+  filter(broj > 0)
+
+van_opsega
+sum(van_opsega$broj)
+```
+
+Pronađena su tri tipa grešaka:
+
+-   **Nule u ocenama partnera** (najviše u `shar` i `prob`). Ocena 0 ne postoji na skali od 1 do 10; najverovatnije je polje ostalo prazno, pa je upisana nula umesto nedostajuće vrednosti.
+-   **Interesovanja van skale.** Pojedini učesnici imaju vrednost 0 za neka interesovanja, a vrednosti iznad 10 pojavljuju se samo kao `gaming` = 14 (5 učesnika) i `reading` = 13 (3 učesnika). To što su vrednosti uvek iste ukazuje na sistematsku grešku pri unosu, ali iz podataka ne možemo utvrditi koja je vrednost bila namerena.
+-   **`imprace` = 0** kod jednog učesnika.
+
+Vrednosti van skale postavljamo na NA. Mogli bismo ih i svesti na granicu skale (na primer 14 na 10), ali to bi značilo da pretpostavljamo šta je učesnik mislio. Redove ne brišemo, jer bi jedna pogrešna vrednost odnela i odluku i sve ostale ocene sa tog sastanka. Nastale nedostajuće vrednosti obrađujemo zajedno sa ostalima u poglavlju o nedostajućim vrednostima.
+
+```{r opseg-ispravka}
+na_pre_opseg <- sum(is.na(sd[skala_1_10]))
+
+sd <- sd %>%
+  mutate(across(all_of(skala_1_10),
+                ~ if_else(.x < 1 | .x > 10, NA_real_, .x)))
+
+na_posle_opseg <- sum(is.na(sd[skala_1_10]))
+na_posle_opseg - na_pre_opseg
+```
+
+Broj nedostajućih vrednosti povećao se tačno za broj pronađenih vrednosti van skale, što potvrđuje da je izmenjeno samo ono što je trebalo. Neke ocene imaju decimale (na primer 3,5 ili 9,9), iako je skala celobrojna; te vrednosti su u okviru skale, pa ih zadržavamo.
+
+## Zbir preferencija
+
+Na pitanja 1 (šta učesnik traži kod partnera) i 2 (šta misli da traži suprotni pol) učesnici su odgovarali raspodelom 100 poena na šest osobina. Da bi odgovori različitih učesnika bili uporedivi, zbir poena svakog učesnika treba da bude 100. Proveru radimo po učesniku, jer su ovi odgovori isti u svim redovima jedne osobe. Zbir poredimo sa 100 uz toleranciju od 1 poena, jer su vrednosti iz talasa 6–9 preračunate na skalu od 100 poena i imaju decimale, pa zbir zbog zaokruživanja može biti, na primer, 99,98.
+
+```{r zbir-provera}
+pref_1 <- c("attr1_1", "sinc1_1", "intel1_1", "fun1_1", "amb1_1", "shar1_1")
+pref_2 <- c("attr2_1", "sinc2_1", "intel2_1", "fun2_1", "amb2_1", "shar2_1")
+
+zbirovi <- sd %>%
+  distinct(iid, .keep_all = TRUE) %>%
+  mutate(zbir_1 = rowSums(across(all_of(pref_1))),
+         zbir_2 = rowSums(across(all_of(pref_2))))
+
+zbirovi %>%
+  summarise(
+    pitanje_1_odstupa = sum(abs(zbir_1 - 100) > 1, na.rm = TRUE),
+    pitanje_2_odstupa = sum(abs(zbir_2 - 100) > 1, na.rm = TRUE),
+    pitanje_1_nedostaje = sum(is.na(zbir_1)),
+    pitanje_2_nedostaje = sum(is.na(zbir_2))
+  )
+```
+
+Zbir se razlikuje od 100 kod 9 učesnika na pitanju 1 (od 90 do 148) i kod 19 učesnika na pitanju 2 (od 80 do 112). Na primer:
+
+```{r zbir-primeri}
+zbirovi %>%
+  filter(abs(zbir_1 - 100) > 1) %>%
+  select(iid, wave, all_of(pref_1), zbir_1)
+```
+
+Učesnik 427 dodelio je po 20 poena svakoj osobini, ukupno 120, iako je očigledno želeo da sve osobine vrednuje jednako. Učesnik 66 dodelio je 53 poena ambicioznosti, pa je zbir 148; verovatno je mislio na 5 ili 3, ali to ne možemo pouzdano utvrditi.
+
+Ove učesnike ne uklanjamo, jer bismo izgubili sve njihove sastanke. Umesto toga, vrednosti normalizujemo: svaku vrednost delimo zbirom poena tog učesnika i množimo sa 100. Time zadržavamo odnos između osobina, odnosno ono što nas zanima, koliko učesnik vrednuje jednu osobinu u odnosu na ostale. Normalizaciju primenjujemo samo kada je odgovoreno na svih šest osobina; kod učesnika kojima neka osobina nedostaje (3 na pitanju 1 i 1 na pitanju 2), preostale vrednosti bi se veštački uvećale, pa ih ostavljamo za poglavlje o nedostajućim vrednostima.
+
+```{r zbir-normalizacija}
+normalizuj <- function(df, kolone) {
+  zbir <- rowSums(df[kolone])
+  df %>%
+    mutate(across(all_of(kolone), ~ if_else(is.na(zbir), .x, .x / zbir * 100)))
+}
+
+sd <- sd %>%
+  normalizuj(pref_1) %>%
+  normalizuj(pref_2)
+
+sd %>%
+  distinct(iid, .keep_all = TRUE) %>%
+  mutate(zbir_1 = rowSums(across(all_of(pref_1))),
+         zbir_2 = rowSums(across(all_of(pref_2)))) %>%
+  summarise(min_1 = min(zbir_1, na.rm = TRUE), max_1 = max(zbir_1, na.rm = TRUE),
+            min_2 = min(zbir_2, na.rm = TRUE), max_2 = max(zbir_2, na.rm = TRUE))
+```
+
+Posle normalizacije zbir je kod svih učesnika sa potpunim odgovorima tačno 100, uključujući i one iz talasa 6–9 čiji se zbir ranije razlikovao zbog zaokruživanja. Preferencije svih učesnika sada imaju isto značenje: udeo od 100 poena koji je učesnik dodelio svakoj osobini.
+
+## Pregled izmena i čuvanje očišćenog skupa
+
+U tabeli su sažete sve provere i izmene iz ovog poglavlja:
+
+| Korak | Nalaz | Izmena |
+|:-----------------------|:-----------------------|:-----------------------|
+| Duplikati | Nema potpunih duplikata niti ponovljenih parova učesnik–partner; u 10 redova sa događaja 5 nedostaje `pid` | Bez izmena |
+| Tipovi promenljivih | 8 kolona sa šiframa kategorija pročitano je kao brojevi | Pretvorene u faktore sa nazivima iz dokumentacije |
+| Promenljiva `met` | Na delu događaja odgovor „ne” zabeležen je kao 0 umesto 2; 8 vrednosti ne postoji u šifarniku | 0 i 2 → „Ne”, 1 → „Da”, ostalo → NA |
+| Vrednosti van opsega | 515 vrednosti van skale 1–10 u ocenama partnera, interesovanjima i koloni `imprace` | Postavljene na NA |
+| Zbir preferencija | Zbir poena različit od 100 kod 9 učesnika (pitanje 1) i 19 učesnika (pitanje 2) | Normalizovano na 100 |
+
+Nijedan red nije uklonjen. Neispravne vrednosti su prevedene u nedostajuće, a nedostajuće vrednosti obrađujemo u sledećem poglavlju. Imputaciju ne radimo u ovom koraku, već tek posle podele na trening i test skup, kako vrednosti iz test skupa ne bi uticale na popunjavanje.
+
+Pre čuvanja proveravamo dimenzije i tipove kolona:
+
+```{r ociscen-provera}
+dim(sd)
+
+glimpse(sd)
+```
+
+Skup i dalje ima 8.378 redova i 63 kolone, a kolone sa šiframa sada su faktori. Očišćeni skup čuvamo u dva formata:
+
+```{r ociscen-cuvanje}
+dir.create("data/clean", showWarnings = FALSE, recursive = TRUE)
+
+saveRDS(sd, "data/clean/sd_clean.rds")
+write_csv(sd, "data/clean/sd_clean.csv")
+```
+
+Format `.rds` čuva tipove kolona, uključujući faktore i njihove nazive, pa ga koristimo u nastavku rada. Format `.csv` se može otvoriti u bilo kom programu, ali faktore pamti kao običan tekst; njega prilažemo kao očišćen skup podataka.
