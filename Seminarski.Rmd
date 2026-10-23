@@ -818,7 +818,7 @@ Skup i dalje ima 8.378 redova i 63 kolone, a kolone sa šiframa sada su faktori.
 dir.create("data/clean", showWarnings = FALSE, recursive = TRUE)
 
 saveRDS(sd, "data/clean/sd_clean.rds")
-write_csv(sd, "data/clean/sd_clean.csv")
+write_excel_csv(sd, "data/clean/sd_clean.csv")
 ```
 
 Format `.rds` čuva tipove kolona, uključujući faktore i njihove nazive, pa ga koristimo u nastavku rada. Format `.csv` se može otvoriti u bilo kom programu, ali faktore pamti kao običan tekst; njega prilažemo kao očišćen skup podataka.
