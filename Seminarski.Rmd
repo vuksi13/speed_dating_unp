@@ -1242,3 +1242,250 @@ Muškarci pre događaja privlačnosti daju najviše poena (27,2 od 100), dok že
 - Ista rasa i razlika u godinama imaju mali uticaj na odluku (hipoteza H3).
 - Ocene su međusobno povezane, što treba imati u vidu pri tumačenju modela.
 - Izjavljene preferencije se ne poklapaju u potpunosti sa ponašanjem, naročito kod žena (hipoteza H4).
+
+# Statistički testovi
+
+U eksplorativnoj analizi uočili smo razlike koje odgovaraju hipotezama H1–H4. Sada proveravamo da li su te razlike statistički značajne, odnosno da li bi se mogle javiti i slučajno. Za svaku hipotezu navodimo nultu (H0) i alternativnu hipotezu, test koji koristimo i razlog za izbor testa. Kada test pretpostavlja normalnu raspodelu, tu pretpostavku najpre proveravamo. Sve testove radimo na nivou značajnosti α = 0,05: ako je p-vrednost manja od 0,05, odbacujemo H0.
+
+Pored p-vrednosti navodimo i veličinu efekta. Naš skup ima 8.378 redova, a kod velikih uzoraka i sasvim mala razlika može biti statistički značajna. P-vrednost govori da li razlika postoji, a veličina efekta koliko je ona velika.
+
+## Napomena o zavisnosti opažanja
+
+Testovi koje koristimo pretpostavljaju da su opažanja nezavisna. U našem skupu to nije u potpunosti ispunjeno: jedan učesnik se pojavljuje u 5 do 22 reda, a odluke iste osobe liče jedna na drugu, jer su neki učesnici izbirljiviji od drugih. Zbog toga su p-vrednosti izračunate po redovima verovatno manje nego što bi trebalo, odnosno rezultati izgledaju sigurnije nego što jesu. Ovo uzimamo u obzir na tri načina:
+
+1. kod hipoteze H1 test ponavljamo i na nivou učesnika, sa jednim redom po osobi;
+2. uz svaki test navodimo veličinu efekta, koja ne zavisi od broja redova;
+3. rezultate na granici značajnosti tumačimo oprezno.
+
+Model koji bi zavisnost uzeo u obzir direktno (na primer model sa slučajnim efektom za svakog učesnika) prevazilazi okvir ovog rada.
+
+## H1: Muškarci češće odgovaraju sa „da”
+
+- H0: pol i odluka su nezavisni, odnosno muškarci i žene jednako često kažu „da”;
+- H1: pol i odluka su povezani.
+
+Obe promenljive su kategorijske, pa koristimo χ² test nezavisnosti. Kao veličinu efekta računamo Kramerov koeficijent V, koji ide od 0 (nema veze) do 1 (potpuna veza); vrednosti oko 0,1 smatraju se malim, oko 0,3 srednjim, a oko 0,5 velikim efektom.
+
+```{r h1-test}
+tabela_h1 <- table(sd$gender, sd$dec)
+tabela_h1
+
+test_h1 <- chisq.test(tabela_h1)
+test_h1
+
+kramer_v <- function(test) {
+  sqrt(unname(test$statistic) / sum(test$observed))
+}
+
+kramer_v(test_h1)
+```
+
+Test daje χ² = 101,4 i p-vrednost manju od 0,001, pa odbacujemo H0: muškarci statistički značajno češće kažu „da” (47,4% prema 36,5% sastanaka). Kramerov V iznosi 0,11, što je mali efekat. Razlika, dakle, sigurno postoji, ali pol sam po sebi objašnjava mali deo odluka.
+
+Pošto redovi nisu nezavisni, isti zaključak proveravamo na nivou učesnika. Za svakog učesnika računamo udeo sastanaka na kojima je rekao „da” i poredimo te udele između polova. Za poređenje dve grupe najčešće se koristi t-test, ali on pretpostavlja da je promenljiva u obe grupe normalno raspoređena. Zato najpre proveravamo normalnost, grafički (Q-Q grafik) i Šapiro-Vilkovim testom, čija je nulta hipoteza da je raspodela normalna:
+
+```{r h1-normalnost}
+po_ucesniku_h1 <- sd %>%
+  group_by(iid, gender) %>%
+  summarise(udeo_da = mean(dec), .groups = "drop")
+
+ggplot(po_ucesniku_h1, aes(sample = udeo_da)) +
+  stat_qq() +
+  stat_qq_line(color = "firebrick") +
+  facet_wrap(~ gender) +
+  labs(title = "Q-Q grafik udela odgovora „da” po učesniku",
+       x = "Teorijski kvantili normalne raspodele", y = "Udeo odgovora „da”")
+
+po_ucesniku_h1 %>%
+  group_by(gender) %>%
+  summarise(shapiro_p = shapiro.test(udeo_da)$p.value)
+```
+
+Kada bi raspodela bila normalna, tačke na Q-Q grafiku ležale bi na crvenoj liniji. Na krajevima se tačke odvajaju od linije i ređaju vodoravno, jer udeo ne može biti manji od 0 ni veći od 1, a oko 9% učesnika nije reklo „da” nikome ili je reklo „da” svima. Šapiro-Vilkov test za oba pola daje p-vrednost manju od 0,001, pa odbacujemo pretpostavku o normalnosti. Zato umesto t-testa koristimo neparametarski Mann-Vitnijev test, koji ne pretpostavlja normalnu raspodelu, već poredi rangove vrednosti:
+
+- H0: raspodela udela odgovora „da” je ista kod muškaraca i žena;
+- H1: raspodele se razlikuju.
+
+```{r h1-po-ucesniku}
+po_ucesniku_h1 %>%
+  group_by(gender) %>%
+  summarise(prosek = round(mean(udeo_da), 3),
+            medijana = round(median(udeo_da), 3),
+            broj_ucesnika = n())
+
+wilcox.test(udeo_da ~ gender, data = po_ucesniku_h1)
+```
+
+Prosečna žena kaže „da” na 37,4% svojih sastanaka, a prosečan muškarac na 48,1%. Mann-Vitnijev test daje p-vrednost manju od 0,001, pa i kada svakog učesnika računamo samo jednom, odbacujemo H0. **Hipoteza H1 je potvrđena.**
+
+## H2: Privlačnost više utiče na odluku muškaraca
+
+- H0: uticaj ocene privlačnosti na odluku isti je kod muškaraca i žena;
+- H1: uticaj ocene privlačnosti razlikuje se po polu.
+
+Pošto je odluka binarna, koristimo logističku regresiju, koja modeluje verovatnoću odgovora „da”. U model uključujemo ocenu privlačnosti, pol i njihovu interakciju (`attr * gender`). Interakcija meri koliko se uticaj privlačnosti kod muškaraca razlikuje od uticaja kod žena, pa je hipoteza H2 zapravo pitanje da li je koeficijent interakcije različit od nule.
+
+Koeficijente prikazujemo kao količnik šansi (eng. *odds ratio*, OR): OR = 1,5 znači da se šansa za odgovor „da” poveća 1,5 puta kada se promenljiva poveća za 1. Žene su referentna kategorija.
+
+```{r h2-model}
+model_h2 <- glm(dec ~ attr * gender, data = sd, family = binomial)
+
+broom::tidy(model_h2, exponentiate = TRUE, conf.int = TRUE) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+Kod žena svaki poen privlačnosti više povećava šansu za odgovor „da” 1,82 puta. Koeficijent interakcije `attr:genderMuškarac` iznosi 1,19 i statistički je značajan (p < 0,001), pa odbacujemo H0. Kod muškaraca se šansa sa svakim poenom privlačnosti povećava 1,82 · 1,19 ≈ 2,17 puta, odnosno strmije nego kod žena, što se vidi i na grafiku iz eksplorativne analize, na kome je linija muškaraca strmija. Koeficijent za pol (0,42) odnosi se na hipotetičku ocenu privlačnosti 0 i nema samostalno tumačenje. **Hipoteza H2 je potvrđena.** Zbog zavisnosti opažanja p-vrednost je verovatno nešto manja nego što bi trebalo, ali je razlika dovoljno velika da zaključak ostaje isti.
+
+## H3: Ista rasa i manja razlika u godinama
+
+Hipoteza ima dva dela, pa je proveravamo sa dva testa.
+
+**Ista rasa.**
+
+- H0: odluka ne zavisi od toga da li je partner iste rase;
+- H1: odluka zavisi od toga da li je partner iste rase.
+
+```{r h3-rasa}
+test_h3_rasa <- chisq.test(table(sd$samerace, sd$dec))
+test_h3_rasa
+
+kramer_v(test_h3_rasa)
+```
+
+Test daje χ² = 4,35 i p = 0,037, pa na nivou 0,05 odbacujemo H0: partnerima iste rase učesnici nešto češće kažu „da” (43,4% prema 41,1%). Kramerov V je, međutim, svega 0,02, što je zanemarljiv efekat, a p-vrednost je blizu granice. Pošto su p-vrednosti zbog zavisnosti opažanja verovatno previše optimistične, ovaj rezultat ne smatramo pouzdanim.
+
+**Razlika u godinama.**
+
+- H0: raspodela razlike u godinama ista je kod odgovora „da” i „ne”;
+- H1: raspodele se razlikuju.
+
+I ovde najpre proveravamo normalnost. Šapiro-Vilkov test u programu R prihvata najviše 5.000 vrednosti, a mi imamo više od 8.000 sastanaka; osim toga, na tako velikom uzorku test odbacuje normalnost i zbog sasvim malih odstupanja. Zato normalnost proveravamo Q-Q grafikom i koeficijentom asimetrije (eng. *skewness*), koji je za normalnu raspodelu jednak 0:
+
+```{r h3-normalnost}
+ggplot(razlika, aes(sample = razlika_godina)) +
+  stat_qq() +
+  stat_qq_line(color = "firebrick") +
+  labs(title = "Q-Q grafik razlike u godinama",
+       x = "Teorijski kvantili normalne raspodele", y = "Razlika u godinama")
+
+asimetrija <- function(x) {
+  mean((x - mean(x))^3) / sd(x)^3
+}
+
+asimetrija(razlika$razlika_godina)
+```
+
+Tačke na Q-Q grafiku se na desnom kraju naglo odvajaju od linije, a koeficijent asimetrije iznosi 1,82, što znači izraženu asimetriju udesno: većina razlika je mala, uz dug rep do 32 godine. Razlika u godinama nije normalno raspoređena, pa i ovde koristimo Mann-Vitnijev test umesto t-testa. Kao veličinu efekta računamo verovatnoću da je razlika u godinama kod nasumično izabranog sastanka sa odgovorom „ne” veća nego kod nasumično izabranog sastanka sa odgovorom „da”. Vrednost 0,5 znači da nema razlike.
+
+```{r h3-godine}
+test_h3_godine <- wilcox.test(razlika_godina ~ odluka, data = razlika)
+test_h3_godine
+
+broj_po_odluci <- table(razlika$odluka)
+unname(test_h3_godine$statistic) / prod(broj_po_odluci)
+```
+
+Test daje p-vrednost manju od 0,001, pa odbacujemo H0: kod odgovora „da” razlika u godinama je nešto manja. Veličina efekta je, međutim, 0,52, vrlo blizu 0,5, a medijane su iste (3 godine). Razlika je statistički značajna samo zato što imamo mnogo redova, a praktično je zanemarljiva.
+
+**Hipoteza H3 je formalno potvrđena, ali su oba efekta zanemarljiva.** Ista rasa i razlika u godinama gotovo ne utiču na odluku, verovatno zato što su učesnici uglavnom vršnjaci iz istog akademskog okruženja.
+
+## H4: Izjavljene i stvarne preferencije
+
+- H0: osobine koje učesnici izjavljuju kao važne iste su kao osobine koje najviše utiču na njihovu odluku;
+- H1: izjavljene i stvarne preferencije se razlikuju.
+
+### Provera pomoću modela
+
+Izjavljene preferencije su prosečni poeni iz upitnika pre događaja (`attr1_1` … `shar1_1`). Stvarni uticaj merimo logističkom regresijom u kojoj odluku objašnjavamo sa šest ocena partnera, posebno za muškarce i za žene. Ocene najpre standardizujemo (oduzimamo prosek i delimo standardnom devijacijom), kako bi koeficijenti bili uporedivi: koeficijent tada pokazuje koliko se menja log-šansa za „da” kada ocena poraste za jednu standardnu devijaciju, uz nepromenjene ostale ocene. Za svaki koeficijent računamo i 95% interval poverenja.
+
+```{r h4-modeli}
+osobine <- c("attr", "sinc", "intel", "fun", "amb", "shar")
+
+stvarni_uticaj <- function(pol) {
+  podaci <- sd %>%
+    filter(gender == pol) %>%
+    select(dec, all_of(osobine)) %>%
+    drop_na() %>%
+    mutate(across(all_of(osobine), ~ as.numeric(scale(.x))))
+
+  glm(dec ~ ., data = podaci, family = binomial) %>%
+    broom::tidy(conf.int = TRUE) %>%
+    filter(term != "(Intercept)") %>%
+    transmute(gender = pol, osobina = term,
+              koeficijent = round(estimate, 2),
+              donja = round(conf.low, 2), gornja = round(conf.high, 2))
+}
+
+stvarno <- bind_rows(stvarni_uticaj("Žena"), stvarni_uticaj("Muškarac"))
+
+izjavljeno <- ucesnici %>%
+  select(gender, all_of(pref_1)) %>%
+  pivot_longer(-gender, names_to = "osobina", values_to = "poeni") %>%
+  mutate(gender = as.character(gender),
+         osobina = str_remove(osobina, "1_1")) %>%
+  group_by(gender, osobina) %>%
+  summarise(poeni = round(mean(poeni, na.rm = TRUE), 1), .groups = "drop")
+
+izjavljeno %>%
+  left_join(stvarno, by = c("gender", "osobina")) %>%
+  group_by(gender) %>%
+  mutate(rang_izjavljeno = rank(-poeni),
+         rang_stvarno = rank(-koeficijent)) %>%
+  arrange(gender, rang_izjavljeno)
+```
+
+Kod žena se izjavljene i stvarne preferencije jasno razlikuju. Žene inteligenciji daju najviše poena (21,0), ali je njen uticaj na odluku mali (koeficijent 0,19), dok je privlačnost, kojoj daju 18,0 poena, osobina sa najvećim uticajem (0,81). Intervali poverenja se ne preklapaju (za privlačnost od oko 0,69 do 0,92, za inteligenciju od oko 0,05 do 0,33), pa je razlika statistički značajna. Zajednička interesovanja su kod žena po izjavama na poslednjem mestu (12,7 poena), a po uticaju na drugom (0,59).
+
+Kod muškaraca se izjave i ponašanje poklapaju na prvom mestu: privlačnosti daju najviše poena (27,2) i ona najviše utiče na odluku (1,25). Ostali redosled se razlikuje: inteligencija je po izjavama na drugom mestu (19,4 poena), a njen uticaj nije statistički značajan (interval poverenja obuhvata nulu), dok su zajednička interesovanja po izjavama na petom mestu, a po uticaju na drugom (0,61).
+
+Koeficijenti za iskrenost i ambicioznost su negativni kod oba pola. To ne znači da učesnicima smetaju iskreni ili ambiciozni partneri: pošto su ocene međusobno povezane, koeficijent pokazuje uticaj osobine uz nepromenjene ostale ocene, pa se deo njenog uticaja „preliva” na povezane ocene, kao što je inteligencija.
+
+### Provera prema samoproceni posle događaja
+
+Model pokazuje kako su učesnici odlučivali, ali je to naše tumačenje njihovog ponašanja. U talasima 15–21 učesnici su dan nakon događaja odgovorili i na pitanje šta je zaista bilo važno u njihovim odlukama, ponovo raspodelom 100 poena (`attr7_2` … `shar7_2`). Te kolone nismo zadržali kao ulaz modela, jer su nastale posle odluke, ali za proveru hipoteze možemo ih koristiti. Za svakog učesnika poredimo poene pre događaja i dan posle njega:
+
+- H0: raspodela razlike između poena pre i posle događaja simetrična je oko nule, odnosno učesnici osobinama daju isti broj poena;
+- H1: učesnici posle događaja osobinama daju različit broj poena nego pre njega.
+
+Pošto isti učesnik odgovara dva puta, uzorci su upareni, pa koristimo Vilkoksonov test ranga sa znakom (upareni Vilkoksonov test), neparametarsku zamenu za upareni t-test. Poene posle događaja normalizujemo na 100 istom funkcijom kao i poene pre događaja.
+
+```{r h4-posle-dogadjaja}
+posle_7 <- c("attr7_2", "sinc7_2", "intel7_2", "fun7_2", "amb7_2", "shar7_2")
+
+pre_posle <- ucesnici %>%
+  filter(wave >= 15) %>%
+  select(iid, all_of(pref_1)) %>%
+  left_join(data %>%
+              distinct(iid, .keep_all = TRUE) %>%
+              select(iid, all_of(posle_7)),
+            by = "iid") %>%
+  normalizuj(posle_7) %>%
+  drop_na()
+
+nrow(pre_posle)
+
+map_dfr(osobine, function(o) {
+  pre <- pre_posle[[paste0(o, "1_1")]]
+  posle <- pre_posle[[paste0(o, "7_2")]]
+  tibble(osobina = o,
+         pre = round(mean(pre), 1),
+         posle = round(mean(posle), 1),
+         p_vrednost = wilcox.test(pre, posle, paired = TRUE)$p.value)
+})
+```
+
+Upoređujemo 123 učesnika koji su odgovorili na oba upitnika. Posle događaja privlačnosti daju u proseku 32,2 poena, a pre njega 23,9, dok inteligenciji daju 15,8 umesto 20,1 poena, iskrenosti 14,2 umesto 17,0, a ambicioznosti 7,4 umesto 9,2. Sve četiri razlike su statistički značajne (p < 0,001), dok se poeni za zabavnost i zajednička interesovanja nisu značajno promenili. Učesnici, dakle, i sami posle događaja priznaju da im je privlačnost bila važnija, a inteligencija i iskrenost manje važne nego što su mislili. Ova provera obuhvata samo poslednjih sedam talasa, ali se njen rezultat slaže sa rezultatom modela na celom skupu.
+
+### Zaključak za H4
+
+Odbacujemo H0. **Hipoteza H4 je potvrđena:** učesnici, a naročito žene, odlučuju pre svega na osnovu privlačnosti i zajedničkih interesovanja, iako pre događaja kao važnije navode inteligenciju i iskrenost.
+
+## Pregled rezultata testova
+
+| Hipoteza | Test | p-vrednost | Veličina efekta | Zaključak |
+|:---|:---|:---|:---|:---|
+| H1: muškarci češće kažu „da” | χ² test; Mann-Vitnijev test po učesniku | < 0,001; < 0,001 | V = 0,11 (mali) | Potvrđena |
+| H2: privlačnost više utiče na muškarce | Logistička regresija sa interakcijom | < 0,001 | OR interakcije = 1,19 | Potvrđena |
+| H3: ista rasa | χ² test | 0,037 | V = 0,02 (zanemarljiv) | Formalno potvrđena, efekat zanemarljiv |
+| H3: razlika u godinama | Mann-Vitnijev test | < 0,001 | 0,52 (zanemarljiv) | Formalno potvrđena, efekat zanemarljiv |
+| H4: izjavljene ≠ stvarne preferencije | Logistička regresija po polu; upareni Vilkoksonov test (talasi 15–21) | —; < 0,001 za privlačnost | razlika u redosledu osobina; privlačnost +8,3 poena | Potvrđena, izraženije kod žena |
