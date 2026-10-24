@@ -1489,3 +1489,412 @@ Odbacujemo H0. **Hipoteza H4 je potvrđena:** učesnici, a naročito žene, odlu
 | H3: ista rasa | χ² test | 0,037 | V = 0,02 (zanemarljiv) | Formalno potvrđena, efekat zanemarljiv |
 | H3: razlika u godinama | Mann-Vitnijev test | < 0,001 | 0,52 (zanemarljiv) | Formalno potvrđena, efekat zanemarljiv |
 | H4: izjavljene ≠ stvarne preferencije | Logistička regresija po polu; upareni Vilkoksonov test (talasi 15–21) | —; < 0,001 za privlačnost | razlika u redosledu osobina; privlačnost +8,3 poena | Potvrđena, izraženije kod žena |
+
+# Nove promenljive
+
+Nove promenljive (eng. *feature engineering*) pravimo od postojećih kolona, kako bismo modelu dali informaciju koju iz sirovih kolona teško može sam da izvuče. Svaka nova promenljiva polazi od nekog nalaza iz prethodnih poglavlja. Za svaku proveravamo dve stvari: da li je povezana sa odlukom i da li ne otkriva ishod, odnosno da li ne dovodi do curenja podataka.
+
+## Pravljenje novih promenljivih
+
+Pravimo sedam novih promenljivih:
+
+| Promenljiva | Kako se računa | Zašto |
+|:---|:---|:---|
+| `razlika_godina` | apsolutna razlika starosti učesnika i partnera | hipoteza H3; razlika je važnija od same starosti, a ublažava i uticaj starijih učesnika |
+| `stariji_partner` | starost partnera minus starost učesnika | pokazuje i smer razlike: da li je partner stariji ili mlađi |
+| `prosek_ocena` | prosek šest ocena osobina partnera | ukupan utisak o partneru, nezavisno od toga koja je osobina presudila |
+| `attr_relativno` | ocena privlačnosti minus prosečna ocena privlačnosti koju je taj učesnik dao svim partnerima | neki učesnici svima daju visoke, a neki niske ocene; ocena 7 od strogog ocenjivača znači više nego od blagog |
+| `ponderisana_ocena` | prosek ocena partnera ponderisan poenima koje je učesnik pre događaja dodelio svakoj osobini | koliko partner odgovara onome što učesnik kaže da traži |
+| `relativni_redosled` | redni broj sastanka podeljen brojem sastanaka učesnika (od 0 do 1) | da li se odluke menjaju kako veče odmiče; deljenjem su uporedivi mali i veliki događaji |
+| `broj_na_ocena` | broj nedostajućih ocena (od 8) u redu | u poglavlju o nedostajućim vrednostima pokazali smo da nedostajanje ocene nosi informaciju o odluci |
+
+Promenljive `attr_relativno` i `relativni_redosled` računamo unutar svakog učesnika (`group_by(iid)`), a ostale za svaki red posebno. Promenljivu `broj_na_ocena` računamo pre imputacije, jer bi posle nje svi redovi imali sve ocene.
+
+```{r fe-pravljenje}
+sd_fe <- sd %>%
+  group_by(iid) %>%
+  mutate(attr_relativno = attr - mean(attr, na.rm = TRUE),
+         relativni_redosled = order / max(order)) %>%
+  ungroup() %>%
+  mutate(razlika_godina = abs(age - age_o),
+         stariji_partner = age_o - age,
+         prosek_ocena = rowMeans(across(all_of(osobine)), na.rm = TRUE),
+         prosek_ocena = if_else(is.nan(prosek_ocena), NA_real_, prosek_ocena),
+         broj_na_ocena = rowSums(is.na(across(all_of(ocene)))))
+
+tezine <- as.matrix(sd_fe[pref_1])
+vrednosti <- as.matrix(sd_fe[osobine])
+brojilac <- rowSums(tezine * vrednosti, na.rm = TRUE)
+imenilac <- rowSums(tezine * !is.na(vrednosti))
+
+sd_fe <- sd_fe %>%
+  mutate(ponderisana_ocena = if_else(imenilac > 0, brojilac / imenilac, NA_real_))
+
+nove <- c("razlika_godina", "stariji_partner", "prosek_ocena", "attr_relativno",
+          "ponderisana_ocena", "relativni_redosled", "broj_na_ocena")
+
+sd_fe %>%
+  select(all_of(nove)) %>%
+  summary()
+```
+
+Kod ponderisane ocene ponderi su poeni iz upitnika pre događaja, a delimo zbirom pondera samo onih osobina za koje ocena postoji. Na taj način, ako učesnik nije ocenio zajednička interesovanja, ponderisana ocena se računa iz preostalih pet osobina, umesto da nedostaje. Vrednost nedostaje samo ako učesnik nije popunio upitnik pre događaja ili nije dao nijednu ocenu.
+
+Sve nove promenljive imaju očekivan opseg: `prosek_ocena` i `ponderisana_ocena` su između 1 i 10, `attr_relativno` ima prosek 0 (od −7,2 do 6,1), `relativni_redosled` je između 0,05 i 1, a `broj_na_ocena` između 0 i 8. Nedostajuće vrednosti se javljaju samo tamo gde nedostaju i kolone od kojih su promenljive izračunate, i to u najviše 308 redova (kod `ponderisana_ocena`).
+
+## Povezanost novih promenljivih sa odlukom
+
+Najpre za svaku novu promenljivu računamo korelaciju sa odlukom i poredimo je sa korelacijom privlačnosti, ocene koja je u eksplorativnoj analizi bila najjače povezana sa odlukom:
+
+```{r fe-korelacije}
+sd_fe %>%
+  select(dec, attr, all_of(nove)) %>%
+  cor(use = "pairwise.complete.obs") %>%
+  as.data.frame() %>%
+  rownames_to_column("promenljiva") %>%
+  select(promenljiva, r = dec) %>%
+  filter(promenljiva != "dec") %>%
+  mutate(r = round(r, 3)) %>%
+  arrange(desc(abs(r)))
+```
+
+Tri nove promenljive su snažno povezane sa odlukom: `attr_relativno` (r = 0,45), `ponderisana_ocena` (0,44) i `prosek_ocena` (0,43), približno koliko i sama privlačnost (0,49). `broj_na_ocena` ima slabu negativnu korelaciju (−0,12), a `razlika_godina`, `stariji_partner` i `relativni_redosled` gotovo nikakvu (ispod 0,05 po apsolutnoj vrednosti).
+
+Korelacija meri samo linearnu vezu, pa za promenljive kod kojih očekujemo drugačiji oblik veze gledamo udeo odgovora „da” po grupama.
+
+**Relativna privlačnost.** Učesnike delimo na pet jednakih grupa prema tome koliko je partner bio privlačniji od proseka tog učesnika:
+
+```{r fe-attr-relativno}
+sd_fe %>%
+  filter(!is.na(attr_relativno)) %>%
+  mutate(grupa = ntile(attr_relativno, 5)) %>%
+  group_by(grupa) %>%
+  summarise(od = round(min(attr_relativno), 2), do = round(max(attr_relativno), 2),
+            udeo_da = round(mean(dec), 3), broj = n())
+```
+
+Udeo odgovora „da” raste od oko 10% kod partnera koje je učesnik ocenio znatno ispod svog proseka do oko 74% kod partnera ocenjenih znatno iznad proseka. Ova promenljiva ne ponavlja samo ocenu privlačnosti: ista ocena 7 kod učesnika koji svima daje 8 znači da je partner ispod proseka, a kod učesnika koji svima daje 5 da je iznad. Da li ova razlika pomaže modelu, proveravamo u poglavlju o iteracijama modela.
+
+**Broj nedostajućih ocena.**
+
+```{r fe-broj-na}
+sd_fe %>%
+  mutate(grupa = case_when(
+    broj_na_ocena == 0 ~ "0",
+    broj_na_ocena == 1 ~ "1",
+    broj_na_ocena <= 3 ~ "2-3",
+    broj_na_ocena <= 7 ~ "4-7",
+    TRUE               ~ "8 (sve)"
+  )) %>%
+  group_by(grupa) %>%
+  summarise(udeo_da = round(mean(dec), 3), broj = n())
+```
+
+Kada nedostaju jedna do tri ocene, udeo odgovora „da” je sličan kao kada su sve ocene popunjene (oko 40–43%). Kada nedostaju četiri ili više ocena, udeo naglo pada, a u 189 redova u kojima nedostaju sve ocene učesnik je rekao „da” u samo 2% slučajeva. Učesnik, dakle, partnera koji ga ne zanima često uopšte ne ocenjuje. Ovu informaciju imputacija briše, pa je `broj_na_ocena` čuva za model.
+
+**Smer razlike u godinama i redosled sastanka.**
+
+```{r fe-godine-redosled}
+sd_fe %>%
+  filter(!is.na(stariji_partner)) %>%
+  mutate(grupa = case_when(
+    stariji_partner <= -3 ~ "1. partner mlađi 3+ god.",
+    stariji_partner < 0   ~ "2. partner mlađi 1-2 god.",
+    stariji_partner == 0  ~ "3. iste godine",
+    stariji_partner < 3   ~ "4. partner stariji 1-2 god.",
+    TRUE                  ~ "5. partner stariji 3+ god."
+  )) %>%
+  group_by(gender, grupa) %>%
+  summarise(udeo_da = round(mean(dec), 3), .groups = "drop") %>%
+  pivot_wider(names_from = gender, values_from = udeo_da)
+
+sd_fe %>%
+  group_by(cetvrtina_veceri = ntile(relativni_redosled, 4)) %>%
+  summarise(udeo_da = round(mean(dec), 3))
+```
+
+Kod oba pola udeo odgovora „da” najveći je kada su partneri istih godina ili se razlikuju za godinu-dve, a najmanji kada je partner tri ili više godina stariji (kod muškaraca 42,9% prema 53,1% kod istih godina, kod žena 34,8% prema 37,8%). Veza, dakle, nije linearna, pa je korelacija bliska nuli, iako razlika postoji. Redosled sastanka, s druge strane, ne utiče na odluku: u sve četiri četvrtine večeri udeo odgovora „da” je između 40% i 43%. Ove promenljive zadržavamo, a njihov stvarni doprinos proveravamo u modelima.
+
+## Provera curenja podataka
+
+Nijedna nova promenljiva ne sme da koristi odluku `dec` ili informacije koje učesnik nije imao kada je odlučivao:
+
+| Promenljiva | Koristi | Curenje? |
+|:---|:---|:---|
+| `razlika_godina`, `stariji_partner` | `age`, `age_o` | Ne; starost partnera učesnik približno vidi na sastanku |
+| `prosek_ocena`, `ponderisana_ocena` | ocene partnera i preferencije pre događaja | Ne; obe su poznate u trenutku odluke |
+| `attr_relativno` | ocene privlačnosti koje je učesnik dao tokom večeri | Ne koristi odluku, ali koristi i ocene sa kasnijih sastanaka; vidi napomenu ispod |
+| `relativni_redosled` | `order` i broj sastanaka učesnika | Ne; raspored je poznat unapred |
+| `broj_na_ocena` | koje ocene nedostaju na obrascu | Ne; obrazac je popunjen zajedno sa odlukom |
+
+Promenljiva `attr_relativno` koristi prosek svih ocena privlačnosti koje je učesnik dao te večeri, pa i ocene sa sastanaka posle trenutnog. Ona zato odgovara situaciji u kojoj predviđamo odluke na osnovu celog popunjenog obrasca učesnika, kada su sve njegove ocene poznate, ali ne i situaciji u kojoj bismo odluku predviđali odmah posle svakog sastanka. Ovo ograničenje navodimo i u zaključku. Pošto se i ova i promenljiva `relativni_redosled` računaju unutar jednog učesnika, a podela na trening i test skup radi se po učesniku, njihove vrednosti u test skupu ne zavise od podataka iz trening skupa.
+
+## Čuvanje skupa sa novim promenljivim
+
+```{r fe-cuvanje}
+dim(sd_fe)
+
+saveRDS(sd_fe, "data/clean/sd_fe.rds")
+```
+
+Skup `sd_fe` ima 8.378 redova i 70 kolona: 63 kolone očišćenog skupa i 7 novih promenljivih. Njega koristimo u poglavlju o modelima.
+
+# Mašinsko učenje
+
+Cilj ovog poglavlja je da napravimo model koji na osnovu podataka o učesniku i njegovih ocena partnera predviđa odluku `dec`. Pošto ciljna promenljiva ima dve vrednosti, reč je o problemu klasifikacije. Koristimo metode iz predmeta, prilagođene klasifikaciji:
+
+| Metoda | Iz predmeta | Uloga u radu |
+|:---|:---|:---|
+| Logistička regresija (`glm`) | Statističko učenje; linearna regresija kao uopšteni linearni model | osnovni model, lako tumačenje koeficijenata |
+| Ridge i lasso (`glmnet`) | Metode skupljanja (eng. *shrinkage*) | stabilnost kod povezanih promenljivih i izbor promenljivih |
+| k najbližih suseda (`class::knn`) | Statističko učenje | neparametarski model, poređenje fleksibilnosti |
+| k-struka unakrsna validacija | Metode ponovnog uzorkovanja | poređenje modela i izbor parametara |
+
+Logistička regresija je proširenje linearne regresije na binarnu ciljnu promenljivu: umesto same vrednosti, linearnom kombinacijom promenljivih modelujemo logaritam šanse za odgovor „da”, log(p / (1 − p)), pa je predviđena verovatnoća uvek između 0 i 1. Linearna regresija bi na binarnoj promenljivoj mogla da predvidi vrednosti manje od 0 ili veće od 1, koje nemaju smisla kao verovatnoće.
+
+```{r ml-biblioteke}
+library(glmnet)
+library(class)
+```
+
+## Podela na trening i test skup
+
+Za modelovanje koristimo skup `sd_fe` iz prethodnog poglavlja, bez identifikatora `pid` i `wave`. Kolonu `iid` zadržavamo samo radi podele podataka. Podatke delimo na trening skup (80%), na kome modeli uče, i test skup (20%), na kome merimo uspešnost na podacima koje model nije video.
+
+Kao što smo objasnili u opisu strukture podataka, podelu radimo po učesniku, a ne po redu: nasumično biramo 80% učesnika, i svi njihovi sastanci čine trening skup. Kada bi isti učesnik bio u oba skupa, model bi na testu prepoznavao njegove navike (na primer da skoro svima kaže „da”), pa bi izgledao bolji nego što jeste na novim osobama. Funkcija `set.seed()` obezbeđuje da podela bude ista pri svakom pokretanju.
+
+```{r ml-podela}
+sd_model <- sd_fe %>%
+  select(-pid, -wave)
+
+set.seed(2026)
+svi_ucesnici <- unique(sd_model$iid)
+ucesnici_trening <- sample(svi_ucesnici, size = round(0.8 * length(svi_ucesnici)))
+
+trening <- sd_model %>% filter(iid %in% ucesnici_trening)
+test <- sd_model %>% filter(!(iid %in% ucesnici_trening))
+
+tibble(skup = c("trening", "test"),
+       redova = c(nrow(trening), nrow(test)),
+       ucesnika = c(n_distinct(trening$iid), n_distinct(test$iid)),
+       udeo_da = round(c(mean(trening$dec), mean(test$dec)), 3))
+
+length(intersect(trening$iid, test$iid))
+```
+
+Nijedan učesnik se ne nalazi u oba skupa (presek je prazan). Udeo odgovora „da” sličan je u oba skupa i blizak udelu u celom skupu (42%), pa test skup dobro predstavlja podatke.
+
+## Priprema promenljivih
+
+Pre učenja promenljive pripremamo u tri koraka:
+
+1. **Imputacija.** Numeričke nedostajuće vrednosti popunjavamo medijanom, a kategorijske najčešćom kategorijom, kako smo odlučili u poglavlju o nedostajućim vrednostima.
+2. **Veštačke promenljive.** Funkcija `model.matrix()` svaku kategorijsku promenljivu pretvara u niz kolona 0/1 (eng. *one-hot encoding*), bez prve kategorije, koja je referentna. Na primer, pol postaje jedna kolona `genderMuškarac`, a 18 oblasti studija 17 kolona.
+3. **Standardizacija.** Svaku kolonu svodimo na prosek 0 i standardnu devijaciju 1. Ovo je neophodno za kNN, jer rastojanje između sastanaka zavisi od skale: bez standardizacije bi starost (raspon 18–55) imala drugačiju težinu od ocene (raspon 1–10). Funkcija `glmnet()` sama standardizuje promenljive, a na logističku regresiju standardizacija ne utiče, osim što koeficijenti postaju uporedivi.
+
+Ključno je da se medijane, najčešće kategorije, proseci i standardne devijacije računaju **samo na trening podacima**, a zatim iste vrednosti primenjuju na podatke za proveru. Kada bismo ih računali na celom skupu, informacija iz test skupa bi uticala na učenje. Zato pripremu pišemo kao funkciju koja prima trening i podatke za proveru:
+
+```{r ml-priprema}
+nauci_pripremu <- function(podaci) {
+  list(
+    medijane = podaci %>%
+      summarise(across(where(is.numeric), ~ median(.x, na.rm = TRUE))),
+    modusi = podaci %>%
+      summarise(across(where(is.factor), ~ names(which.max(table(.x)))))
+  )
+}
+
+popuni <- function(podaci, priprema) {
+  for (k in names(priprema$medijane)) {
+    podaci[[k]][is.na(podaci[[k]])] <- priprema$medijane[[k]]
+  }
+  for (k in names(priprema$modusi)) {
+    podaci[[k]][is.na(podaci[[k]])] <- priprema$modusi[[k]]
+  }
+  podaci
+}
+
+u_matricu <- function(podaci, izbaci) {
+  model.matrix(dec ~ ., data = select(podaci, -all_of(izbaci)))[, -1]
+}
+
+pripremi <- function(tr, va, izbaci = c("iid", "like", "prob")) {
+  priprema <- nauci_pripremu(tr)
+  tr <- popuni(tr, priprema)
+  va <- popuni(va, priprema)
+
+  X_tr <- u_matricu(tr, izbaci)
+  X_va <- u_matricu(va, izbaci)
+
+  proseci <- colMeans(X_tr)
+  devijacije <- apply(X_tr, 2, stats::sd)
+  zadrzi <- devijacije > 0
+
+  list(X_tr = scale(X_tr[, zadrzi], center = proseci[zadrzi], scale = devijacije[zadrzi]),
+       X_va = scale(X_va[, zadrzi], center = proseci[zadrzi], scale = devijacije[zadrzi]),
+       y_tr = tr$dec,
+       y_va = va$dec,
+       iid_tr = tr$iid)
+}
+
+primer <- pripremi(trening, test)
+dim(primer$X_tr)
+```
+
+Posle pripreme trening skup ima više od sto kolona, jer je svaka kategorijska promenljiva zamenjena nizom kolona 0/1. Kolone koje u trening skupu imaju samo jednu vrednost (na primer kolona za praznu kategoriju „Indijanska”) uklanjamo, jer ne nose nikakvu informaciju, a pri standardizaciji bismo delili nulom.
+
+**Zašto izbacujemo `like` i `prob`.** Ove dve ocene popunjene su na istom obrascu i u istom trenutku kao odluka, pa su dozvoljene. Ipak, `like` („koliko ti se partner dopao”) je skoro sama odluka izražena brojem. Model sa njima bi bolje predviđao, ali bi manje govorio o tome koje osobine partnera vode do odluke. Zato je glavni model bez ovih kolona, a model sa njima prikazujemo radi poređenja.
+
+## Mere uspešnosti
+
+Za ocenu koristimo više mera, jer svaka meri nešto drugo. Model daje verovatnoću odgovora „da”; ako je ona bar 0,5, predviđamo „da”.
+
+- **tačnost**: udeo tačno predviđenih sastanaka;
+- **preciznost**: od sastanaka za koje je model predvideo „da”, koliki udeo je zaista „da”;
+- **odziv** (eng. *recall*): od svih stvarnih odgovora „da”, koliki udeo je model pronašao;
+- **specifičnost**: od svih stvarnih odgovora „ne”, koliki udeo je model pronašao;
+- **F1 mera**: harmonijska sredina preciznosti i odziva, korisna kada su klase neuravnotežene;
+- **AUC** (površina ispod ROC krive): verovatnoća da model nasumičnom sastanku sa odgovorom „da” dodeli veću verovatnoću nego nasumičnom sastanku sa odgovorom „ne”. Vrednost 0,5 odgovara nasumičnom pogađanju, a 1 savršenom modelu. AUC ne zavisi od praga od 0,5, pa je naša glavna mera.
+
+AUC računamo preko rangova, istom formulom kao statistiku Mann-Vitnijevog testa iz poglavlja o statističkim testovima: to je udeo parova („da”, „ne”) u kojima sastanak sa odgovorom „da” ima veću predviđenu verovatnoću.
+
+```{r ml-metrike}
+auc <- function(y, p) {
+  r <- rank(p)
+  n1 <- sum(y == 1)
+  n0 <- sum(y == 0)
+  (sum(r[y == 1]) - n1 * (n1 + 1) / 2) / (n1 * n0)
+}
+
+metrike <- function(y, p, prag = 0.5) {
+  predvidjeno <- as.integer(p >= prag)
+  tp <- sum(predvidjeno == 1 & y == 1)
+  tn <- sum(predvidjeno == 0 & y == 0)
+  fp <- sum(predvidjeno == 1 & y == 0)
+  fn <- sum(predvidjeno == 0 & y == 1)
+  preciznost <- tp / (tp + fp)
+  odziv <- tp / (tp + fn)
+  tibble(auc = auc(y, p),
+         tacnost = (tp + tn) / length(y),
+         preciznost = preciznost,
+         odziv = odziv,
+         specificnost = tn / (tn + fp),
+         f1 = 2 * preciznost * odziv / (preciznost + odziv))
+}
+```
+
+## Unakrsna validacija
+
+Modele poredimo k-strukom unakrsnom validacijom (k = 5) na trening skupu. Učesnike iz trening skupa nasumično delimo u pet grupa (preklopa). Model učimo na četiri grupe, a predviđamo za petu, i to ponavljamo pet puta, tako da svaki sastanak dobije predviđanje modela koji ga nije video. Mere zatim računamo iz svih tih predviđanja zajedno. I ovde delimo po učesniku, iz istog razloga kao kod podele na trening i test skup, a pripremu podataka ponavljamo u svakom preklopu, samo na četiri grupe za učenje.
+
+Test skup u ovom koraku ne koristimo: na njemu modele ocenjujemo samo jednom, na kraju poglavlja o iteracijama. Kada bismo modele birali prema rezultatu na test skupu, on bi postao deo učenja i više ne bi pokazivao uspešnost na novim podacima.
+
+```{r ml-cv-funkcija}
+set.seed(2026)
+fold_po_ucesniku <- sample(rep(1:5, length.out = n_distinct(trening$iid)))
+names(fold_po_ucesniku) <- unique(trening$iid)
+fold <- fold_po_ucesniku[as.character(trening$iid)]
+
+table(fold)
+
+cv_grupno <- function(model, izbaci = c("iid", "like", "prob"), ...) {
+  p <- numeric(nrow(trening))
+  for (k in 1:5) {
+    deo <- pripremi(trening[fold != k, ], trening[fold == k, ], izbaci)
+    p[fold == k] <- model(deo, ...)
+  }
+  metrike(trening$dec, p)
+}
+```
+
+## Modeli
+
+Svaki model pišemo kao funkciju koja uči na pripremljenom trening delu i vraća verovatnoće odgovora „da” za deo za proveru. Tako sve modele proveravamo istom funkcijom `cv_grupno()`, na istim preklopima i sa istom pripremom, pa je poređenje ravnopravno.
+
+- **Osnovni model** uvek predviđa udeo odgovora „da” iz trening skupa (oko 0,42), pa uvek predviđa „ne”. Ne koristi nijednu promenljivu i služi kao donja granica: model koji ga ne nadmaši ništa nije naučio.
+- **Logistička regresija** koristi sve promenljive, bez ograničenja koeficijenata.
+- **Ridge** dodaje kaznu λ · Σβ² na zbir kvadrata koeficijenata, pa sve koeficijente smanjuje ka nuli. Model je stabilniji kada su promenljive međusobno povezane, kao naše ocene.
+- **Lasso** dodaje kaznu λ · Σ|β| na zbir apsolutnih vrednosti koeficijenata, koja neke koeficijente postavlja tačno na nulu, pa model sam bira promenljive.
+- **kNN** novi sastanak svrstava prema odlukama k najsličnijih sastanaka iz trening skupa; predviđena verovatnoća je udeo odgovora „da” među njima. Za sada uzimamo k = 51, a broj suseda biramo u poglavlju o iteracijama.
+
+Jačinu kazne λ za ridge i lasso biramo funkcijom `cv.glmnet()`, koja unutar trening dela radi sopstvenu unakrsnu validaciju (takođe po učesniku, preko argumenta `foldid`) i bira λ sa najvećim AUC. Na taj način je i izbor parametra deo učenja, pa preklop za proveru ni ovde ne utiče na model.
+
+```{r ml-modeli}
+m_osnovni <- function(deo) {
+  rep(mean(deo$y_tr), nrow(deo$X_va))
+}
+
+m_logisticka <- function(deo) {
+  fit <- glm(y ~ ., data = data.frame(y = deo$y_tr, deo$X_tr), family = binomial)
+  predict(fit, newdata = data.frame(deo$X_va), type = "response")
+}
+
+m_glmnet <- function(deo, alpha) {
+  unutrasnji_fold <- match(deo$iid_tr, sample(unique(deo$iid_tr))) %% 5 + 1
+  cv_fit <- cv.glmnet(deo$X_tr, deo$y_tr, family = "binomial", alpha = alpha,
+                      type.measure = "auc", foldid = unutrasnji_fold)
+  as.numeric(predict(cv_fit, newx = deo$X_va, s = "lambda.min", type = "response"))
+}
+
+m_knn <- function(deo, k = 51) {
+  predvidjeno <- knn(deo$X_tr, deo$X_va, cl = factor(deo$y_tr), k = k, prob = TRUE)
+  udeo_glasova <- attr(predvidjeno, "prob")
+  ifelse(predvidjeno == "1", udeo_glasova, 1 - udeo_glasova)
+}
+```
+
+Argument `alpha` u funkciji `glmnet()` određuje vrstu kazne: `alpha = 0` je ridge, a `alpha = 1` lasso.
+
+## Poređenje modela
+
+```{r ml-cv}
+set.seed(2026)
+rezultati_cv <- bind_rows(
+  "Osnovni model" = cv_grupno(m_osnovni),
+  "Logistička regresija" = cv_grupno(m_logisticka),
+  "Ridge" = cv_grupno(m_glmnet, alpha = 0),
+  "Lasso" = cv_grupno(m_glmnet, alpha = 1),
+  "kNN (k = 51)" = cv_grupno(m_knn, k = 51),
+  .id = "model"
+)
+
+rezultati_cv %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
+  arrange(desc(auc))
+```
+
+```{r ml-vrednost, include = FALSE}
+vrednost <- function(tabela, red, mera, kolona = "model") {
+  round(tabela[[mera]][tabela[[kolona]] == red], 3)
+}
+```
+
+Osnovni model ima AUC 0,5 i tačnost `r vrednost(rezultati_cv, "Osnovni model", "tacnost")`, koliko iznosi udeo odgovora „ne” u trening skupu. Pošto nikada ne predviđa „da”, preciznost i F1 mera za njega ne mogu da se izračunaju (NaN), a odziv je 0. Svi ostali modeli ga jasno nadmašuju.
+
+Najbolje rezultate daju linearni modeli: lasso (AUC `r vrednost(rezultati_cv, "Lasso", "auc")`), ridge (`r vrednost(rezultati_cv, "Ridge", "auc")`) i logistička regresija (`r vrednost(rezultati_cv, "Logistička regresija", "auc")`). Regularizovani modeli su nešto bolji od obične logističke regresije, jer model ima više od sto ulaznih kolona (17 interesovanja, desetine veštačkih promenljivih za oblast studija i karijeru), od kojih mnoge ne doprinose predviđanju. Bez kazne model delimično uči i slučajne obrasce iz trening skupa (preprilagođavanje, eng. *overfitting*), a kazna smanjuje uticaj takvih kolona.
+
+kNN je najslabiji (AUC `r vrednost(rezultati_cv, "kNN (k = 51)", "auc")`). Kada se rastojanje računa iz više od sto kolona, od kojih je većina nebitna za odluku, „najsličniji” sastanci nisu zaista slični po onome što određuje odluku (takozvano prokletstvo dimenzionalnosti). U poglavlju o iteracijama proveravamo da li kNN radi bolje sa manjim brojem promenljivih.
+
+Pošto je veza između ocena i odluke u velikoj meri linearna (udeo odgovora „da” skoro pravolinijski raste sa ocenom privlačnosti, kao što smo videli u eksplorativnoj analizi), fleksibilniji, nelinearni model kao što je kNN ovde nema prednost.
+
+## Model sa ocenama `like` i `prob`
+
+Na kraju proveravamo koliko bi modeli bili bolji kada bismo uključili i ocene `like` i `prob`:
+
+```{r ml-like-prob}
+set.seed(2026)
+rezultati_sa <- bind_rows(
+  "Logistička regresija" = cv_grupno(m_logisticka, izbaci = "iid"),
+  "Lasso" = cv_grupno(m_glmnet, izbaci = "iid", alpha = 1),
+  .id = "model"
+)
+
+rezultati_cv %>%
+  filter(model %in% rezultati_sa$model) %>%
+  select(model, bez = auc) %>%
+  left_join(rezultati_sa %>% select(model, sa = auc), by = "model") %>%
+  mutate(razlika = sa - bez) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+Sa ocenama `like` i `prob` AUC raste, za lasso sa `r vrednost(rezultati_cv, "Lasso", "auc")` na `r vrednost(rezultati_sa, "Lasso", "auc")`. Poboljšanje je očekivano, jer je `like` od svih ocena najjače povezan sa odlukom (r = 0,51), ali nije veliko: i bez ovih ocena model dobro predviđa odluku na osnovu ocena pojedinačnih osobina. To znači da opšti utisak `like` uglavnom sažima ono što već sadrže ocene privlačnosti, zabavnosti i zajedničkih interesovanja, što se slaže sa visokim korelacijama između tih ocena. U nastavku i dalje koristimo modele bez ovih ocena.
