@@ -977,6 +977,23 @@ Granice su 18 i 34 godine. Ispod donje granice nema nikoga, a iznad gornje je 13
 
 Ove učesnike zadržavamo. Starost od 35 do 55 godina sasvim je moguća kod postdiplomskih studenata, pa nije reč o greškama, već o stvarnim osobama. Granica od 34 godine niska je zato što je većina učesnika vrlo blizu po godinama, pa pravilo označava kao ekstremne i osobe koje u stvarnosti nisu neobične. Uklanjanjem bismo izgubili 173 sastanka, kao i informaciju o tome kako partneri reaguju na stariju osobu. Uticaj starosti umesto toga ublažavamo time što u poglavlju o novim promenljivim koristimo razliku u godinama između učesnika i partnera, koja je za odluku važnija od same starosti.
 
+### Poređenje sa z-vrednošću
+
+Drugi uobičajen način otkrivanja ekstremnih vrednosti je z-vrednost: koliko je standardnih devijacija vrednost udaljena od proseka. Vrednost se obično smatra ekstremnom ako je |z| > 3. Za razliku od pravila IQR, ovaj metod pretpostavlja normalnu raspodelu i koristi prosek i standardnu devijaciju, na koje i same ekstremne vrednosti utiču.
+
+```{r starost-z}
+z_starost <- (ucesnici$age - mean(ucesnici$age, na.rm = TRUE)) /
+  sd(ucesnici$age, na.rm = TRUE)
+
+ucesnici %>%
+  mutate(z = round(z_starost, 2)) %>%
+  filter(abs(z) > 3) %>%
+  select(iid, gender, age, z) %>%
+  arrange(age)
+```
+
+Prema z-vrednosti ekstremna su samo 4 učesnika (38, 39, 42 i 55 godina), za razliku od 13 prema pravilu IQR. Razlog je to što stariji učesnici povećavaju standardnu devijaciju, pa je granica od tri standardne devijacije (oko 37,7 godina) viša. Pošto raspodela starosti nije normalna, već asimetrična udesno, pravilo IQR, koje se zasniva na kvartilima, ovde je pouzdanije. Oba metoda izdvajaju istu najekstremniju vrednost (55 godina), a odluka da učesnike zadržimo ostaje ista.
+
 ## Ostale numeričke kolone
 
 Pravilo IQR primenjujemo na sve ostale numeričke kolone. Kolone iz upitnika imaju istu vrednost u svim redovima jednog učesnika, pa ih brojimo po učesniku, a ocene sa sastanka po redu.
@@ -1692,6 +1709,8 @@ Pre učenja promenljive pripremamo u tri koraka:
 2. **Veštačke promenljive.** Funkcija `model.matrix()` svaku kategorijsku promenljivu pretvara u niz kolona 0/1 (eng. *one-hot encoding*), bez prve kategorije, koja je referentna. Na primer, pol postaje jedna kolona `genderMuškarac`, a 18 oblasti studija 17 kolona.
 3. **Standardizacija.** Svaku kolonu svodimo na prosek 0 i standardnu devijaciju 1. Ovo je neophodno za kNN, jer rastojanje između sastanaka zavisi od skale: bez standardizacije bi starost (raspon 18–55) imala drugačiju težinu od ocene (raspon 1–10). Funkcija `glmnet()` sama standardizuje promenljive, a na logističku regresiju standardizacija ne utiče, osim što koeficijenti postaju uporedivi.
 
+Argument `imputacija` funkcije `pripremi()` omogućava i drugi način imputacije, regresionu imputaciju, koju definišemo i poredimo u poglavlju o iteracijama.
+
 Ključno je da se medijane, najčešće kategorije, proseci i standardne devijacije računaju **samo na trening podacima**, a zatim iste vrednosti primenjuju na podatke za proveru. Kada bismo ih računali na celom skupu, informacija iz test skupa bi uticala na učenje. Zato pripremu pišemo kao funkciju koja prima trening i podatke za proveru:
 
 ```{r ml-priprema}
@@ -1718,10 +1737,20 @@ u_matricu <- function(podaci, izbaci) {
   model.matrix(dec ~ ., data = select(podaci, -all_of(izbaci)))[, -1]
 }
 
-pripremi <- function(tr, va, izbaci = c("iid", "like", "prob")) {
+pripremi <- function(tr, va, izbaci = c("iid", "like", "prob"),
+                     imputacija = "medijana") {
   priprema <- nauci_pripremu(tr)
-  tr <- popuni(tr, priprema)
-  va <- popuni(va, priprema)
+  tr_popunjen <- popuni(tr, priprema)
+  va_popunjen <- popuni(va, priprema)
+
+  if (imputacija == "regresija") {
+    r <- regresiona_imputacija(tr, va, tr_popunjen, va_popunjen)
+    tr_popunjen <- r$tr
+    va_popunjen <- r$va
+  }
+
+  tr <- tr_popunjen
+  va <- va_popunjen
 
   X_tr <- u_matricu(tr, izbaci)
   X_va <- u_matricu(va, izbaci)
@@ -1785,7 +1814,7 @@ metrike <- function(y, p, prag = 0.5) {
 
 ## Unakrsna validacija
 
-Modele poredimo k-strukom unakrsnom validacijom (k = 5) na trening skupu. Učesnike iz trening skupa nasumično delimo u pet grupa (preklopa). Model učimo na četiri grupe, a predviđamo za petu, i to ponavljamo pet puta, tako da svaki sastanak dobije predviđanje modela koji ga nije video. Mere zatim računamo iz svih tih predviđanja zajedno. I ovde delimo po učesniku, iz istog razloga kao kod podele na trening i test skup, a pripremu podataka ponavljamo u svakom preklopu, samo na četiri grupe za učenje.
+Modele poredimo k-strukom unakrsnom validacijom (k = 5) na trening skupu. Učesnike iz trening skupa nasumično delimo u pet grupa (preklopa). Model učimo na četiri grupe, a predviđamo za petu, i to ponavljamo pet puta, tako da svaki sastanak dobije predviđanje modela koji ga nije video. Mere zatim računamo iz svih tih predviđanja zajedno. Funkcija `cv_grupno()` ima i argumente koje koristimo u poglavlju o iteracijama: `podaci` (skup sa dodatnim kolonama), `imputacija` (način popunjavanja) i `vrati_p` (vraća predviđanja umesto mera). I ovde delimo po učesniku, iz istog razloga kao kod podele na trening i test skup, a pripremu podataka ponavljamo u svakom preklopu, samo na četiri grupe za učenje.
 
 Test skup u ovom koraku ne koristimo: na njemu modele ocenjujemo samo jednom, na kraju poglavlja o iteracijama. Kada bismo modele birali prema rezultatu na test skupu, on bi postao deo učenja i više ne bi pokazivao uspešnost na novim podacima.
 
@@ -1797,13 +1826,17 @@ fold <- fold_po_ucesniku[as.character(trening$iid)]
 
 table(fold)
 
-cv_grupno <- function(model, izbaci = c("iid", "like", "prob"), ...) {
-  p <- numeric(nrow(trening))
+cv_grupno <- function(model, izbaci = c("iid", "like", "prob"), podaci = trening,
+                      imputacija = "medijana", vrati_p = FALSE, ...) {
+  p <- numeric(nrow(podaci))
   for (k in 1:5) {
-    deo <- pripremi(trening[fold != k, ], trening[fold == k, ], izbaci)
+    deo <- pripremi(podaci[fold != k, ], podaci[fold == k, ], izbaci, imputacija)
     p[fold == k] <- model(deo, ...)
   }
-  metrike(trening$dec, p)
+  if (vrati_p) {
+    return(p)
+  }
+  metrike(podaci$dec, p)
 }
 ```
 
@@ -1898,3 +1931,409 @@ rezultati_cv %>%
 ```
 
 Sa ocenama `like` i `prob` AUC raste, za lasso sa `r vrednost(rezultati_cv, "Lasso", "auc")` na `r vrednost(rezultati_sa, "Lasso", "auc")`. Poboljšanje je očekivano, jer je `like` od svih ocena najjače povezan sa odlukom (r = 0,51), ali nije veliko: i bez ovih ocena model dobro predviđa odluku na osnovu ocena pojedinačnih osobina. To znači da opšti utisak `like` uglavnom sažima ono što već sadrže ocene privlačnosti, zabavnosti i zajedničkih interesovanja, što se slaže sa visokim korelacijama između tih ocena. U nastavku i dalje koristimo modele bez ovih ocena.
+
+# Iteracije modela
+
+U prethodnom poglavlju modele smo uporedili sa unapred zadatim izborima: imputacija medijanom, sve promenljive, prag 0,5 i k = 51 za kNN. U ovom poglavlju svaki od tih izbora menjamo pojedinačno i unakrsnom validacijom na trening skupu proveravamo da li izmena poboljšava model. Prolazimo kroz pet vrsta iteracija: podešavanje hiperparametara, izbor promenljivih, transformacije promenljivih, način imputacije i neuravnoteženost klasa. Na kraju najbolje modele jednom ocenjujemo na test skupu.
+
+## Podešavanje hiperparametara
+
+Hiperparametar je vrednost koju model ne uči iz podataka, već je zadajemo pre učenja: jačina kazne λ kod ridge i lasso modela, broj suseda k kod kNN i broj glavnih komponenti M kod PCA. Hiperparametre biramo unakrsnom validacijom, jer bi na trening skupu uvek „pobedio” najfleksibilniji model.
+
+### Jačina kazne λ
+
+Funkciju `cv.glmnet()` primenjujemo na ceo trening skup, sa istim preklopima po učesniku kao u prethodnom poglavlju (argument `foldid`), i prikazujemo kako se AUC menja sa jačinom kazne:
+
+```{r it-lambda, fig.height = 4}
+set.seed(2026)
+cv_lasso <- cv.glmnet(primer$X_tr, primer$y_tr, family = "binomial", alpha = 1,
+                      type.measure = "auc", foldid = as.integer(fold))
+cv_ridge <- cv.glmnet(primer$X_tr, primer$y_tr, family = "binomial", alpha = 0,
+                      type.measure = "auc", foldid = as.integer(fold))
+
+par(mfrow = c(1, 2))
+plot(cv_lasso)
+title("Lasso", line = 2.5)
+plot(cv_ridge)
+title("Ridge", line = 2.5)
+par(mfrow = c(1, 1))
+
+tibble(model = c("Lasso", "Ridge"),
+       lambda_min = c(cv_lasso$lambda.min, cv_ridge$lambda.min),
+       auc = c(max(cv_lasso$cvm), max(cv_ridge$cvm))) %>%
+  mutate(across(where(is.numeric), ~ signif(.x, 3)))
+```
+
+Na grafiku je na x-osi logaritam jačine kazne, a na y-osi AUC iz unakrsne validacije, sa intervalom od jedne standardne greške. Brojevi iznad grafika lasso modela pokazuju koliko je koeficijenata različito od nule. Levo, pri slaboj kazni, model je blizak običnoj logističkoj regresiji; desno, pri jakoj kazni, svi koeficijenti teže nuli i AUC pada ka 0,5. Između je oblast u kojoj kazna uklanja šum, a zadržava korisne promenljive. Leva isprekidana linija označava λ sa najvećim AUC (`lambda.min`), koju koristimo u modelima, a desna najveću λ čiji je AUC unutar jedne standardne greške od najboljeg (`lambda.1se`), odnosno jednostavniji model sličnog kvaliteta.
+
+### Broj suseda k
+
+Kod kNN broj suseda određuje fleksibilnost modela. Malo k (na primer 5) znači da odluka zavisi od nekoliko najbližih sastanaka, pa model prati i slučajne obrasce (mala pristrasnost, velika varijansa). Veliko k uprosečava odluke mnogo sastanaka, pa je model stabilniji, ali grublji (veća pristrasnost, manja varijansa). Ovo je kompromis između pristrasnosti i varijanse (eng. *bias-variance trade-off*).
+
+U prethodnom poglavlju pretpostavili smo da je kNN slab zbog velikog broja nebitnih kolona. Zato k biramo za dve varijante: sa svim kolonama i samo sa ocenama šest osobina i novim promenljivim iz poglavlja o novim promenljivim.
+
+```{r it-knn, fig.height = 4}
+kolone_knn <- c(osobine, nove)
+izbaci_knn <- setdiff(names(trening), c("dec", kolone_knn))
+
+susedi <- c(5, 15, 31, 51, 101, 151)
+
+set.seed(2026)
+knn_rezultati <- map_dfr(susedi, function(k) {
+  bind_rows(
+    cv_grupno(m_knn, k = k) %>%
+      mutate(kolone = "sve kolone"),
+    cv_grupno(m_knn, izbaci = izbaci_knn, k = k) %>%
+      mutate(kolone = "ocene i nove promenljive")
+  ) %>%
+    mutate(k = k)
+})
+
+ggplot(knn_rezultati, aes(x = k, y = auc, color = kolone)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "kNN: AUC u unakrsnoj validaciji prema broju suseda",
+       x = "Broj suseda k", y = "AUC", color = NULL)
+
+najbolji_knn <- knn_rezultati %>%
+  filter(kolone == "ocene i nove promenljive") %>%
+  slice_max(auc, n = 1, with_ties = FALSE)
+
+najbolji_knn %>%
+  select(k, auc, tacnost, f1) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+Kod obe varijante AUC raste sa brojem suseda, jer pri malom k model previše zavisi od pojedinačnih sastanaka. Uklanjanje nebitnih kolona znatno poboljšava kNN: sa `r length(kolone_knn)` kolona najbolji AUC je `r round(najbolji_knn$auc, 3)` (k = `r najbolji_knn$k`), približno koliko i kod linearnih modela, dok je sa svim kolonama primetno niži. Ovo potvrđuje da je problem bio u prokletstvu dimenzionalnosti, a ne u samom algoritmu.
+
+## Izbor promenljivih
+
+Model sa više od sto kolona je teško tumačiti, a nebitne kolone mogu da pogoršaju predviđanje. Izbor promenljivih radimo na tri načina: pomoću lasso modela, proverom multikolinearnosti i postupnim izborom (eng. *stepwise selection*).
+
+### Lasso
+
+Lasso sam postavlja deo koeficijenata na nulu. Posmatramo koeficijente modela sa izabranom jačinom kazne. Pošto su sve kolone standardizovane, veličine koeficijenata su uporedive.
+
+```{r it-lasso-koef}
+koef_lasso <- coef(cv_lasso, s = "lambda.min")
+
+koef_tabela <- tibble(promenljiva = rownames(koef_lasso),
+                      koeficijent = as.numeric(koef_lasso)) %>%
+  filter(promenljiva != "(Intercept)")
+
+koef_tabela %>%
+  summarise(ukupno = n(),
+            jednako_nuli = sum(koeficijent == 0),
+            zadrzano = sum(koeficijent != 0))
+
+koef_tabela %>%
+  filter(koeficijent != 0) %>%
+  arrange(desc(abs(koeficijent))) %>%
+  slice_head(n = 12) %>%
+  mutate(koeficijent = round(koeficijent, 3))
+```
+
+Lasso je od `r nrow(koef_tabela)` kolona `r sum(koef_tabela$koeficijent == 0)` postavio na nulu, odnosno zadržao `r sum(koef_tabela$koeficijent != 0)`. Među kolonama sa najvećim koeficijentima su relativna privlačnost (`attr_relativno`), zajednička interesovanja, zabavnost, ponderisana ocena i broj nedostajućih ocena, kao i pol i rasa učesnika. Nove promenljive iz poglavlja o novim promenljivim nalaze se među najvažnijima, dok je većina interesovanja i oblasti studija uklonjena. Iskrenost, inteligencija i ambicioznost imaju male ili negativne koeficijente, što se slaže sa nalazom hipoteze H4.
+
+### Multikolinearnost
+
+Kada je jedna promenljiva skoro linearna kombinacija drugih, koeficijenti postaju nestabilni, a standardne greške velike. Ovo merimo faktorom rasta varijanse (eng. *variance inflation factor*, VIF): VIF = 1 znači da promenljiva nije povezana sa ostalima, a vrednosti iznad 5–10 ukazuju na problematičnu kolinearnost. Proveravamo ocene osobina i nove promenljive izvedene iz njih:
+
+```{r it-vif}
+podaci_vif <- popuni(trening, nauci_pripremu(trening))
+
+model_vif <- glm(dec ~ attr + sinc + intel + fun + amb + shar +
+                   prosek_ocena + attr_relativno + ponderisana_ocena,
+                 data = podaci_vif, family = binomial)
+
+sort(round(car::vif(model_vif), 1), decreasing = TRUE)
+
+model_vif_2 <- update(model_vif, . ~ . - prosek_ocena)
+
+sort(round(car::vif(model_vif_2), 1), decreasing = TRUE)
+```
+
+Najveći VIF ima `prosek_ocena` (`r round(car::vif(model_vif)[["prosek_ocena"]], 1)`), što je očekivano: ona je prosek šest ocena koje su takođe u modelu, pa je skoro potpuno određena njima. Kada je izbacimo, VIF ostalih promenljivih znatno pada. Koeficijente obične logističke regresije zato ne treba tumačiti pojedinačno, ali na predviđanje kolinearnost manje utiče, a ridge i lasso je ublažavaju kaznom. Promenljive `attr`, `ponderisana_ocena` i ostale ocene i dalje su međusobno povezane, kako smo videli i u eksplorativnoj analizi.
+
+Pod istim razlogom preferencije `attr1_1` … `shar1_1` nismo stavljali u ovu proveru: njihov zbir je za svakog učesnika 100, pa je svaka od njih tačno određena ostalim petima.
+
+### Postupni izbor promenljivih (BIC)
+
+Postupni izbor unapred počinje od modela bez promenljivih i u svakom koraku dodaje promenljivu koja najviše poboljšava model, sve dok dodavanje više ne pomaže. Kvalitet modela merimo Bajesovim informacionim kriterijumom (BIC), koji nagrađuje dobro slaganje sa podacima, a kažnjava broj parametara, pa daje manje modele od kriterijuma AIC. U funkciji `step()` to postižemo argumentom `k = log(n)`. Kategorijska promenljiva ulazi ili izlazi iz modela cela, sa svim svojim veštačkim kolonama.
+
+```{r it-stepwise}
+podaci_step <- podaci_vif %>%
+  select(-iid, -like, -prob)
+
+nulti_model <- glm(dec ~ 1, data = podaci_step, family = binomial)
+puni_model <- glm(dec ~ ., data = podaci_step, family = binomial)
+
+izbor_bic <- step(nulti_model,
+                  scope = list(lower = ~ 1, upper = formula(puni_model)),
+                  direction = "forward",
+                  k = log(nrow(podaci_step)),
+                  trace = 0)
+
+izabrane <- attr(terms(izbor_bic), "term.labels")
+izabrane
+
+c(BIC_nulti = BIC(nulti_model), BIC_izabrani = BIC(izbor_bic), BIC_puni = BIC(puni_model))
+
+izbaci_bic <- setdiff(names(trening), c("dec", izabrane))
+
+set.seed(2026)
+r_bic <- cv_grupno(m_logisticka, izbaci = izbaci_bic)
+r_bic %>% mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+Postupni izbor zadržao je `r length(izabrane)` promenljivih, a BIC izabranog modela je niži i od modela bez promenljivih i od modela sa svim promenljivim. U unakrsnoj validaciji model sa izabranim promenljivim ima AUC `r round(r_bic$auc, 3)`, prema `r vrednost(rezultati_cv, "Logistička regresija", "auc")` za logističku regresiju sa svim promenljivim, iako koristi znatno manje promenljivih. Treba imati u vidu da je izbor rađen na celom trening skupu, pa je ova procena blago optimistična.
+
+## Transformacije promenljivih
+
+### Kvadratni član i interakcija
+
+Logistička regresija pretpostavlja da je log-šansa linearna funkcija promenljivih. Proveravamo dva odstupanja od te pretpostavke koja smo uočili ranije: da li je veza sa privlačnošću zakrivljena (kvadratni član `attr²`) i da li privlačnost drugačije utiče kod muškaraca (interakcija `attr × pol`, hipoteza H2).
+
+```{r it-transformacije}
+trening_poly <- trening %>%
+  mutate(attr_kvadrat = attr^2,
+         attr_muskarac = attr * (gender == "Muškarac"))
+
+set.seed(2026)
+r_poly <- cv_grupno(m_logisticka, podaci = trening_poly)
+r_poly %>% mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+Sa kvadratnim članom i interakcijom AUC je `r round(r_poly$auc, 3)`, gotovo isto kao bez njih (`r vrednost(rezultati_cv, "Logistička regresija", "auc")`). Interakcija je statistički značajna (hipoteza H2), ali je razlika između polova dovoljno mala da ne menja predviđanje, a veza sa privlačnošću je na skali log-šanse približno linearna. Ove kolone zato ne zadržavamo.
+
+### Analiza glavnih komponenti
+
+Analiza glavnih komponenti (PCA) pretvara povezane kolone u nove, međusobno nekorelisane kolone (glavne komponente), poređane prema tome koliko varijanse podataka objašnjavaju. Ako prvih nekoliko komponenti sadrži većinu informacije, model na njima je jednostavniji i otporan na kolinearnost. Logistička regresija na prvih M komponenti je klasifikaciona verzija regresije na glavne komponente (PCR). Komponente računamo samo iz trening dela u svakom preklopu.
+
+```{r it-pca, fig.height = 4}
+m_pca <- function(deo, M) {
+  pca <- prcomp(deo$X_tr)
+  Z_tr <- pca$x[, 1:M, drop = FALSE]
+  Z_va <- predict(pca, deo$X_va)[, 1:M, drop = FALSE]
+  fit <- glm(y ~ ., data = data.frame(y = deo$y_tr, Z_tr), family = binomial)
+  predict(fit, newdata = data.frame(Z_va), type = "response")
+}
+
+pca_trening <- prcomp(primer$X_tr)
+kumulativno <- summary(pca_trening)$importance[3, ]
+
+tibble(M = seq_along(kumulativno), kumulativno = kumulativno) %>%
+  ggplot(aes(x = M, y = kumulativno)) +
+  geom_line() +
+  geom_hline(yintercept = 0.8, linetype = "dashed") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Kumulativni udeo objašnjene varijanse",
+       x = "Broj glavnih komponenti", y = "Objašnjena varijansa")
+
+which(kumulativno >= 0.8)[1]
+
+set.seed(2026)
+pca_rezultati <- map_dfr(c(5, 10, 20, 40, 60), function(M) {
+  cv_grupno(m_pca, M = M) %>% mutate(M = M)
+})
+
+pca_rezultati %>%
+  select(M, auc, tacnost, f1) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+Varijansa je raspoređena na mnogo komponenti: za 80% varijanse potrebno je `r which(kumulativno >= 0.8)[1]` komponenti. AUC raste sa brojem komponenti i tek sa mnogo komponenti dostiže nivo modela na originalnim kolonama. Razlog je to što PCA bira pravce sa najviše varijanse ne gledajući odluku: velik deo varijanse potiče od interesovanja, oblasti studija i preferencija, koje malo govore o odluci, dok su ocene partnera, koje najviše utiču na odluku, samo deo te varijanse. PCA ovde ne donosi poboljšanje, a komponente se teško tumače.
+
+## Način imputacije
+
+U poglavlju o nedostajućim vrednostima odlučili smo da ih popunimo medijanom. Medijana je jednostavna, ali svakoj nedostajućoj oceni daje istu vrednost, bez obzira na to kako je učesnik ocenio partnera na ostalim osobinama. Alternativa je regresiona imputacija: nedostajuću ocenu jedne osobine predviđamo linearnom regresijom iz ocena preostalih pet osobina i pola. Ako je učesnik partneru dao niske ocene na ostalim osobinama, i imputirana ocena biće niska. Regresione modele učimo samo na trening delu i predviđene vrednosti ograničavamo na skalu od 1 do 10.
+
+```{r it-imputacija}
+regresiona_imputacija <- function(tr_sirov, va_sirov, tr, va) {
+  for (o in osobine) {
+    forma <- reformulate(c(setdiff(osobine, o), "gender"), response = o)
+    fit <- lm(forma, data = tr[!is.na(tr_sirov[[o]]), ])
+    nedostaje_tr <- is.na(tr_sirov[[o]])
+    nedostaje_va <- is.na(va_sirov[[o]])
+    tr[[o]][nedostaje_tr] <- pmin(pmax(predict(fit, tr[nedostaje_tr, ]), 1), 10)
+    va[[o]][nedostaje_va] <- pmin(pmax(predict(fit, va[nedostaje_va, ]), 1), 10)
+  }
+  list(tr = tr, va = va)
+}
+
+set.seed(2026)
+r_imputacija <- cv_grupno(m_glmnet, imputacija = "regresija", alpha = 1)
+
+bind_rows("medijana" = rezultati_cv %>% filter(model == "Lasso") %>% select(-model),
+          "regresija" = r_imputacija,
+          .id = "imputacija") %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+Regresiona imputacija daje gotovo iste rezultate kao imputacija medijanom. Razlog je to što ocene nedostaju u malom broju redova (najviše 13% kod zajedničkih interesovanja), a informaciju o tome da ocena nedostaje, koja je za odluku važna, model već dobija preko promenljive `broj_na_ocena`. Zato zadržavamo jednostavniju imputaciju medijanom.
+
+## Neuravnoteženost klasa i izbor praga
+
+Klase su umereno neuravnotežene (42% „da”). Model daje verovatnoću, a sastanak svrstavamo u klasu „da” ako je verovatnoća bar 0,5. Taj prag nije obavezan: niži prag znači da model češće predviđa „da”, pa pronalazi više stvarnih odgovora „da” (veći odziv), ali greši češće kada ih predviđa (manja preciznost). Koristimo predviđanja lasso modela iz unakrsne validacije i za različite pragove računamo mere:
+
+```{r it-prag, fig.height = 4}
+set.seed(2026)
+p_lasso_cv <- cv_grupno(m_glmnet, alpha = 1, vrati_p = TRUE)
+
+po_pragu <- map_dfr(seq(0.2, 0.7, by = 0.05), function(t) {
+  metrike(trening$dec, p_lasso_cv, prag = t) %>% mutate(prag = t)
+})
+
+po_pragu %>%
+  select(prag, tacnost, preciznost, odziv, f1) %>%
+  pivot_longer(-prag, names_to = "mera", values_to = "vrednost") %>%
+  ggplot(aes(x = prag, y = vrednost, color = mera)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Mere lasso modela prema pragu odluke",
+       x = "Prag", y = "Vrednost", color = NULL)
+
+najbolji_prag <- po_pragu$prag[which.max(po_pragu$f1)]
+najbolji_prag
+```
+
+Sa smanjenjem praga odziv raste, a preciznost opada. Tačnost je najveća oko praga 0,5, a F1 mera, koja uravnotežuje preciznost i odziv, najveća je pri pragu `r najbolji_prag` (F1 = `r round(max(po_pragu$f1), 3)` prema `r round(po_pragu$f1[abs(po_pragu$prag - 0.5) < 1e-9], 3)` pri pragu 0,5). AUC se ne menja, jer ne zavisi od praga. Izbor praga zavisi od cilja: ako je važnije pronaći što više osoba koje bi rekle „da”, bolji je niži prag. Prag `r najbolji_prag` primenjujemo i na test skupu, uz uobičajeni prag 0,5.
+
+## Pregled iteracija
+
+```{r it-pregled}
+pregled <- bind_rows(
+  "Logistička regresija, sve promenljive" =
+    rezultati_cv %>% filter(model == "Logistička regresija") %>% select(-model),
+  "Logistička regresija, izbor BIC" = r_bic,
+  "Logistička regresija, attr² i attr × pol" = r_poly,
+  "Lasso, imputacija medijanom" =
+    rezultati_cv %>% filter(model == "Lasso") %>% select(-model),
+  "Lasso, regresiona imputacija" = r_imputacija,
+  "Ridge" = rezultati_cv %>% filter(model == "Ridge") %>% select(-model),
+  "PCA + logistička regresija (najbolje M)" =
+    pca_rezultati %>% slice_max(auc, n = 1, with_ties = FALSE) %>% select(-M),
+  "kNN, sve kolone (najbolje k)" =
+    knn_rezultati %>% filter(kolone == "sve kolone") %>%
+    slice_max(auc, n = 1, with_ties = FALSE) %>% select(-kolone, -k),
+  "kNN, ocene i nove promenljive (najbolje k)" =
+    najbolji_knn %>% select(-kolone, -k),
+  .id = "iteracija"
+)
+
+pregled %>%
+  select(iteracija, auc, tacnost, f1) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
+  arrange(desc(auc))
+```
+
+Razlike između najboljih varijanti su male, reda veličine 0,01 u AUC. Najveća poboljšanja donose regularizacija (ridge i lasso u odnosu na običnu logističku regresiju) i izbor promenljivih (BIC kod logističke regresije, uklanjanje nebitnih kolona kod kNN). Transformacije, PCA i drugačija imputacija ne poboljšavaju model. Za konačnu procenu na test skupu biramo modele sa podešenim parametrima: logističku regresiju, ridge, lasso, PCA sa najboljim M i kNN sa ocenama i novim promenljivim i najboljim k.
+
+## Konačna procena na test skupu
+
+Izabrane modele učimo na celom trening skupu i jednom ih ocenjujemo na test skupu, koji do sada nijednom nije korišćen.
+
+```{r it-test}
+najbolje_M <- pca_rezultati %>%
+  slice_max(auc, n = 1, with_ties = FALSE) %>%
+  pull(M)
+
+konacno <- pripremi(trening, test)
+konacno_knn <- pripremi(trening, test, izbaci = izbaci_knn)
+
+set.seed(2026)
+predvidjanja <- list(
+  "Osnovni model" = m_osnovni(konacno),
+  "Logistička regresija" = m_logisticka(konacno),
+  "Ridge" = m_glmnet(konacno, alpha = 0),
+  "Lasso" = m_glmnet(konacno, alpha = 1),
+  "PCA + logistička regresija" = m_pca(konacno, M = najbolje_M),
+  "kNN" = m_knn(konacno_knn, k = najbolji_knn$k)
+)
+
+rezultati_test <- map_dfr(predvidjanja, ~ metrike(test$dec, .x), .id = "model")
+
+rezultati_test %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
+  arrange(desc(auc))
+
+metrike(test$dec, predvidjanja$Lasso, prag = najbolji_prag) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+Na test skupu lasso ima AUC `r vrednost(rezultati_test, "Lasso", "auc")`, tačnost `r vrednost(rezultati_test, "Lasso", "tacnost")` i F1 meru `r vrednost(rezultati_test, "Lasso", "f1")`, prema tačnosti `r vrednost(rezultati_test, "Osnovni model", "tacnost")` osnovnog modela. Rezultati na test skupu bliski su rezultatima iz unakrsne validacije, što znači da modeli nisu preprilagođeni trening skupu i da procena iz unakrsne validacije dobro predstavlja uspešnost na novim učesnicima. Kao i u unakrsnoj validaciji, linearni modeli su među najboljima, a razlike među modelima su male. Sa pragom `r najbolji_prag` odziv lasso modela raste, uz manju preciznost, kao i u unakrsnoj validaciji.
+
+### ROC krive i matrica konfuzije
+
+ROC kriva prikazuje udeo pronađenih odgovora „da” (odziv, na y-osi) u odnosu na udeo odgovora „ne” pogrešno svrstanih u „da” (1 − specifičnost, na x-osi), za sve moguće pragove. Što je kriva bliža gornjem levom uglu, model je bolji; dijagonala odgovara nasumičnom pogađanju, a površina ispod krive je AUC.
+
+```{r it-roc, fig.height = 5}
+roc_kriva <- function(y, p) {
+  pragovi <- c(Inf, sort(unique(p), decreasing = TRUE))
+  tibble(fpr = sapply(pragovi, function(t) mean(p[y == 0] >= t)),
+         tpr = sapply(pragovi, function(t) mean(p[y == 1] >= t)))
+}
+
+map_dfr(predvidjanja, ~ roc_kriva(test$dec, .x), .id = "model") %>%
+  ggplot(aes(x = fpr, y = tpr, color = model)) +
+  geom_path() +
+  geom_abline(linetype = "dashed", color = "grey50") +
+  coord_equal() +
+  labs(title = "ROC krive na test skupu",
+       x = "1 − specifičnost", y = "Odziv", color = NULL)
+
+matrica <- table(stvarno = factor(test$dec, levels = c(1, 0), labels = c("Da", "Ne")),
+                 predvidjeno = factor(as.integer(predvidjanja$Lasso >= 0.5), levels = c(1, 0),
+                                      labels = c("Da", "Ne")))
+matrica
+
+propusteno_da <- matrica["Da", "Ne"]
+pogresno_da <- matrica["Ne", "Da"]
+```
+
+ROC krive linearnih modela gotovo se poklapaju, a kriva kNN modela je blizu njih, dok osnovni model leži na dijagonali. Matrica konfuzije lasso modela pokazuje dve vrste grešaka: model je propustio `r propusteno_da` odgovora „da” (predvideo je „ne”), a u `r pogresno_da` slučajeva predvideo je „da” kada je odgovor bio „ne”. `r if (propusteno_da > pogresno_da) "Češće propušta odgovore „da”, što je u skladu sa time da je „ne” češća klasa, pa model pri pragu 0,5 pomalo naginje ka njoj. Niži prag, kao što je prag izabran prema F1 meri, smanjuje ovu vrstu greške." else "Greške su približno uravnotežene između dve vrste."`
+
+### Model sa ocenama `like` i `prob` na test skupu
+
+```{r it-test-like-prob}
+konacno_sa <- pripremi(trening, test, izbaci = "iid")
+
+set.seed(2026)
+p_lasso_sa <- m_glmnet(konacno_sa, alpha = 1)
+test_sa <- metrike(test$dec, p_lasso_sa)
+
+test_sa %>% mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+Sa ocenama `like` i `prob` lasso na test skupu ima AUC `r round(test_sa$auc, 3)`, prema `r vrednost(rezultati_test, "Lasso", "auc")` bez njih, što potvrđuje nalaz iz unakrsne validacije.
+
+## Nesigurnost procene: bootstrap
+
+Rezultat na test skupu zavisi od toga koji su učesnici slučajno završili u test skupu. Da bismo procenili koliko je AUC pouzdan, koristimo bootstrap: iz test skupa sa vraćanjem izvlačimo isti broj učesnika (sa svim njihovim sastancima), računamo AUC i postupak ponavljamo 1.000 puta. Izvlačimo učesnike, a ne pojedinačne redove, jer redovi istog učesnika nisu nezavisni. Raspon srednjih 95% dobijenih vrednosti je 95% interval poverenja. Na isti način proveravamo i da li je lasso zaista bolji od obične logističke regresije, odnosno da li interval poverenja za razliku njihovih AUC obuhvata nulu.
+
+```{r it-bootstrap}
+test_ucesnici <- unique(test$iid)
+redovi_po_ucesniku <- split(seq_len(nrow(test)), test$iid)
+
+auc_bootstrap <- function(ucesnici, indeksi) {
+  redovi <- unlist(redovi_po_ucesniku[as.character(ucesnici[indeksi])])
+  y <- test$dec[redovi]
+  auc_lasso <- auc(y, predvidjanja$Lasso[redovi])
+  auc_logisticka <- auc(y, predvidjanja[["Logistička regresija"]][redovi])
+  c(auc_lasso, auc_logisticka, auc_lasso - auc_logisticka)
+}
+
+set.seed(2026)
+boot_rezultat <- boot::boot(test_ucesnici, auc_bootstrap, R = 1000)
+
+ip_lasso <- boot::boot.ci(boot_rezultat, type = "perc", index = 1)$percent[4:5]
+ip_razlika <- boot::boot.ci(boot_rezultat, type = "perc", index = 3)$percent[4:5]
+
+tibble(velicina = c("AUC lasso", "AUC lasso − AUC logistička"),
+       procena = boot_rezultat$t0[c(1, 3)],
+       donja = c(ip_lasso[1], ip_razlika[1]),
+       gornja = c(ip_lasso[2], ip_razlika[2])) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+95% interval poverenja za AUC lasso modela je od `r round(ip_lasso[1], 3)` do `r round(ip_lasso[2], 3)`, pa je model pouzdano znatno bolji od nasumičnog pogađanja (0,5). Interval za razliku između lasso modela i obične logističke regresije je od `r round(ip_razlika[1], 3)` do `r round(ip_razlika[2], 3)`. `r if (ip_razlika[1] < 0) "Pošto obuhvata nulu, razlika između ova dva modela na test skupu nije statistički pouzdana: prednost regularizacije je mala u odnosu na nesigurnost koja potiče od izbora test učesnika." else "Pošto ne obuhvata nulu, lasso je na test skupu pouzdano bolji od obične logističke regresije."` Širina intervala pokazuje i da bi razlike od 0,01 u AUC između modela iz pregleda iteracija trebalo tumačiti oprezno.
