@@ -113,62 +113,62 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88em;backgroun
     <h2>5. EDA<span class="cnt"></span></h2>
     <ul>
       <li class="l0"><label><input type="checkbox" id="t33" checked=""> <span>Distribution of <code>dec</code> overall and by gender</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t34"> <span>Univariate plots</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t35"> <span>Yes rate by <code>attr</code>, by gender</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t36"> <span>Ratings for "yes" vs "no"</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t37"> <span>Correlations of ratings</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t38"> <span>Stated vs actual preferences</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t34" checked=""> <span>Univariate plots</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t35" checked=""> <span>Yes rate by <code>attr</code>, by gender</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t36" checked=""> <span>Ratings for "yes" vs "no"</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t37" checked=""> <span>Correlations of ratings</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t38" checked=""> <span>Stated vs actual preferences</span></label></li>
     </ul>
   </section>
   <section class="phase">
     <h2>6. Statistical tests (α = 0.05)<span class="cnt"></span></h2>
     <ul>
-      <li class="l0"><label><input type="checkbox" id="t39"> <span>H1: men say yes more often (χ²)</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t40"> <span>H2: attractiveness matters more to men (logistic regression, <code>gender × attr</code>)</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t41"> <span>H3: same race / age gap (χ², Mann-Whitney)</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t42"> <span>H4: stated vs actual preferences</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t43"> <span>Note on non-independent observations</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t39" checked=""> <span>H1: men say yes more often (χ²)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t40" checked=""> <span>H2: attractiveness matters more to men (logistic regression, <code>gender × attr</code>)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t41" checked=""> <span>H3: same race / age gap (χ², Mann-Whitney)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t42" checked=""> <span>H4: stated vs actual preferences</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t43" checked=""> <span>Note on non-independent observations</span></label></li>
     </ul>
   </section>
   <section class="phase">
     <h2>7. Feature engineering<span class="cnt"></span></h2>
     <ul>
-      <li class="l0"><label><input type="checkbox" id="t44"> <span><code>age_gap</code></span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t45"> <span><code>rating_mean</code>, rating relative to the rater's own average</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t46"> <span><code>weighted_score</code></span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t47"> <span><code>order_rel</code></span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t48"> <span>Evidence that each new variable helps</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t49"> <span>Check that none of them leak the target</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t44" checked=""> <span><code>age_gap</code></span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t45" checked=""> <span><code>rating_mean</code>, rating relative to the rater's own average</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t46" checked=""> <span><code>weighted_score</code></span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t47" checked=""> <span><code>order_rel</code></span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t48" checked=""> <span>Evidence that each new variable helps</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t49" checked=""> <span>Check that none of them leak the target</span></label></li>
     </ul>
   </section>
   <section class="phase">
     <h2>8. Machine learning<span class="cnt"></span></h2>
     <ul>
-      <li class="l0"><label><input type="checkbox" id="t50"> <span>Split by person (<code>group_initial_split(by = iid)</code>, <code>set.seed</code>)</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t51"> <span>Baseline (majority class)</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t52"> <span>Logistic regression, Random Forest, XGBoost</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t53"> <span>Grouped CV (<code>group_vfold_cv</code>)</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t54"> <span>Metrics on the test set only (accuracy, F1, ROC AUC, confusion matrix)</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t55"> <span>Model with and without <code>like</code>/<code>prob</code></span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t50" checked=""> <span>Split by person (<code>group_initial_split(by = iid)</code>, <code>set.seed</code>)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t51" checked=""> <span>Baseline (majority class)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t52" checked=""> <span>Logistic regression, Random Forest, XGBoost</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t53" checked=""> <span>Grouped CV (<code>group_vfold_cv</code>)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t54" checked=""> <span>Metrics on the test set only (accuracy, F1, ROC AUC, confusion matrix)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t55" checked=""> <span>Model with and without <code>like</code>/<code>prob</code></span></label></li>
     </ul>
   </section>
   <section class="phase">
     <h2>9. Model iterations<span class="cnt"></span></h2>
     <ul>
-      <li class="l0"><label><input type="checkbox" id="t56"> <span>Imputation strategies</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t57"> <span>Feature selection</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t58"> <span>Transformations</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t59"> <span>Class imbalance</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t60"> <span>Hyperparameter tuning (<code>tune_grid</code>)</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t61"> <span>Comparison table of all attempts</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t56" checked=""> <span>Imputation strategies</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t57" checked=""> <span>Feature selection</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t58" checked=""> <span>Transformations</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t59" checked=""> <span>Class imbalance</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t60" checked=""> <span>Hyperparameter tuning (<code>tune_grid</code>)</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t61" checked=""> <span>Comparison table of all attempts</span></label></li>
     </ul>
   </section>
   <section class="phase">
     <h2>10. Finish and defend<span class="cnt"></span></h2>
     <ul>
-      <li class="l0"><label><input type="checkbox" id="t62"> <span>Zaključak</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t63"> <span>README</span></label></li>
-      <li class="l0"><label><input type="checkbox" id="t64"> <span>Rmd knits from scratch, numbers in the text match the output</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t62" checked=""> <span>Zaključak</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t63" checked=""> <span>README</span></label></li>
+      <li class="l0"><label><input type="checkbox" id="t64" checked=""> <span>Rmd knits from scratch, numbers in the text match the output</span></label></li>
       <li class="l0"><label><input type="checkbox" id="t65"> <span>Submit at least 5 days before the exam</span></label></li>
       <li class="l0"><label><input type="checkbox" id="t66"> <span>Fix the professor's comments</span></label></li>
       <li class="l0"><label><input type="checkbox" id="t67"> <span>Both of us can explain every part</span></label></li>
