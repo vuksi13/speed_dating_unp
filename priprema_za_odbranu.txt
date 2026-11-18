@@ -1,0 +1,610 @@
+DEFENCE PREPARATION - Speed Dating seminar (Uvod u nauku o podacima)
+=====================================================================
+
+How to use this file
+- Each chapter has: WHAT we did, WHY, and LIKELY QUESTIONS with short answers.
+- Numbers to remember are marked with [#].
+- Part B at the end covers general course theory the professor can ask about.
+- Part C lists the known weak spots in the project, with a prepared answer for each.
+- Golden rule for "why not X?": every choice should rest on one of three reasons:
+    (1) it would cause DATA LEAKAGE (using information the participant did not have),
+    (2) the DATA does not support it (too many missing values, free text, etc.),
+    (3) it is OUTSIDE THE COURSE / not needed (we keep simple, explainable methods).
+
+
+=====================================================================
+PART A - THE PROJECT, CHAPTER BY CHAPTER
+=====================================================================
+
+---------------------------------------------------------------------
+1. INTRODUCTION (Uvod i cilj rada)
+---------------------------------------------------------------------
+WHAT
+- Data: Speed Dating Experiment, Columbia University, 2002-2004.
+  Paper: Fisman, Iyengar, Kamenica, Simonson (2006), "Gender Differences in Mate
+  Selection: Evidence From a Speed Dating Experiment", Quarterly Journal of Economics.
+  Source: Kaggle.
+- [#] 551 participants, 21 events (waves), 8,378 rows, 195 columns.
+- [#] Age 18-55, median 26.
+- Participants are graduate students (master, PhD, professional programs) from MANY
+  schools of Columbia: business, law, medicine, engineering... NOT one faculty.
+  That is why the age range goes up to 55.
+- Goal: predict dec (1 = wants to see the partner again). This is binary classification.
+- [#] 42% "yes", 58% "no".
+
+HOW AN EVENT WORKED
+- Before: a questionnaire (age, race, field, interests, and 100 points split across
+  6 traits: attr, sinc, intel, fun, amb, shar).
+- Women sat at tables and men rotated. Each date lasted 4 minutes.
+- After each date: yes/no plus ratings 1-10 for the same 6 traits, plus like and prob.
+- Both said yes -> match -> contact details were exchanged.
+- Later questionnaires: the next day (_2) and 3-4 weeks later (_3).
+
+HYPOTHESES (all at alpha = 0.05)
+- H1: men say "yes" more often than women.          [from the original paper]
+- H2: attractiveness matters more for men.           [from the original paper]
+- H3: same race / smaller age gap -> more "yes".    [race: the authors' follow-up paper; age: ours]
+- H4: stated preferences differ from real decisions. [ours, built on the dataset design]
+- H5: hypergamy (women prefer higher-status partners more). [ours]
+
+LIKELY QUESTIONS
+Q: Why these hypotheses?
+A: Each is motivated, can be tested with our columns, and uses a course method.
+   H1 and H2 replicate the original paper, which checks that our pipeline is correct.
+   H3 is the common "similarity" belief (homophily). H4 uses the dataset's unique
+   before/after design. H5 tests a well-known claim and we report a null result honestly.
+Q: Why alpha = 0.05?
+A: It's a convention (Fisher) and the assignment requires it. It is the probability of a
+   type I error we accept. A smaller alpha means fewer false positives but more missed
+   effects (type II errors). A larger alpha means the opposite. Our key results are
+   p < 0.001, so they hold at 0.01 too. We also report effect sizes.
+Q: Why not test more hypotheses?
+A: Multiple testing. With 10 tests at 0.05, P(at least one false positive) is about
+   1 - 0.95^10 = 40%. Also each hypothesis must be motivated (no "fishing"), and the
+   report was already long.
+Q: H1/H2 are directional, but you used two-sided tests?
+A: Two-sided is stricter. The direction is visible in the percentages and coefficients.
+
+
+---------------------------------------------------------------------
+2. DATA DESCRIPTION AND COLUMN SELECTION (Opis i priprema podataka)
+---------------------------------------------------------------------
+STRUCTURE (the most important idea in the whole project)
+- One row = one date seen from ONE participant's side. Every date appears twice
+  (once per person). [#] 8,378 rows = about 4,200 dates.
+- iid = unique person id across the whole dataset. id = number only within one event.
+  ALWAYS use iid.
+- pid = the partner's iid.
+- Consequences:
+  1. Rows are NOT independent (one person = 5 to 22 rows). This matters for tests.
+  2. The train/test split must be BY PERSON, otherwise the model learns a person's
+     rating habits and test results look unrealistically good.
+  3. Person-level statistics (age, gender ratio) are computed once per iid.
+- [#] 274 women, 277 men. 5 to 22 dates per person, median 16.
+- [#] Wave 17: 10 women and 14 men. The men have round = 11 but only 10 rows, so a
+  planned woman probably did not show up. The rows are correct, so we keep them.
+
+SUFFIXES
+- _o = about the partner, _1 = before the event, _s = middle of the event,
+  _2 = the day after, _3 = 3-4 weeks later.
+- The number after a trait: 1 = what you look for, 2 = what the opposite sex looks for,
+  3 = how you rate yourself, 4 = what your own sex looks for, 5 = how others see you,
+  7 = what really mattered in your decisions.
+
+MISSING VALUES (first look)
+- Two kinds of missing data:
+  (a) a person skipped a question -> can be imputed;
+  (b) the question did not exist in that wave -> the column cannot be used on the
+      whole sample.
+- expnum: only waves 1-5. attr4_1: from wave 6. attr5_1: from wave 10.
+  attr7_2: only waves 15-21.
+- [#] Only 263 of 551 returned the 3-4 week survey.
+- [#] dec has 0 missing values, so no row is dropped because of an unknown target.
+- Ratings: 2.4-4.2% missing; amb 8.5%; shar 12.7%.
+
+COLUMN SELECTION: 195 -> 64 columns (3 rules)
+1. TIME: only information that existed when the participant filled in the form after
+   the date. Anything later = data leakage.
+2. POINT OF VIEW: we model the participant's decision, so we keep the participant's own
+   data and ratings, and drop what the partner wrote about them.
+3. USABILITY: drop free text, columns missing in whole waves, and duplicates.
+
+KEPT
+- Target: dec. Identifiers (not model inputs): iid, pid, wave.
+- Participant: gender, age, race, field_cd, career_c, imprace, imprelig, goal, date,
+  go_out, exphappy, 17 interests.
+- Preferences / self-rating: attr1_1-shar1_1, attr2_1-shar2_1, attr3_1-amb3_1.
+- Partner / pair: age_o, race_o, samerace, int_corr.
+- The date: attr, sinc, intel, fun, amb, shar, like, prob, met, order, condtn.
+
+DROPPED AND WHY (learn this table)
+- match, dec_o -> LEAKAGE. match contains our target. dec_o is the partner's decision,
+  which the participant learns only the next day.
+- attr_o..shar_o, like_o, prob_o, met_o -> LEAKAGE. The partner's ratings of the
+  participant, which the participant never sees.
+- All _2 and _3 columns, match_es -> created AFTER the decision.
+- _s columns -> did not exist in the first half of the evening, about 52% missing.
+- pf_o_att..pf_o_sha -> the partner's preferences, unknown to the participant.
+- expnum, attr4_1.., attr5_1.. -> not asked in all waves.
+- mn_sat, tuition, income -> 49-63% missing. (income is the median household income
+  of the home zip code, NOT the person's income.)
+- id, partner, idg, field, career -> duplicate information we already have.
+- zipcode, from, undergra -> free text with hundreds of values ("from" has 270
+  different entries for 551 people: "NYC", "New York", "Manhattan" = the same place).
+- position, positin1, round -> table numbers / counts that say nothing about the partner.
+
+LIKELY QUESTIONS
+Q: Why keep age_o and race_o but drop other partner columns?
+A: The participant can see or hear them during the 4 minutes, and we need them for H3.
+Q: Did you check same region / field / race before dropping partner data?
+A: Race: yes, samerace is kept and tested in H3. Field: yes, ista_oblast is built from
+   the partner's field via pid (chapter 8). Region: from/zipcode are messy free text,
+   so they cannot be compared reliably between two people.
+Q: Are like and prob leakage?
+A: No. They are filled in at the same moment as the decision. But like ("how much did
+   you like this person") measures almost the same thing as dec, so the main models
+   exclude them, and we show a separate benchmark model with them.
+Q: int_corr / ista_oblast / partner career come from the PARTNER's questionnaire.
+   Doesn't that break your rule 2?
+A: Rule 2 is about what the partner WROTE ABOUT THE PARTICIPANT (their ratings and
+   decision). Field of study, career plans and shared interests are things you learn in
+   the conversation itself. They are facts about the partner that the participant
+   observes, not hidden information.
+Q: The same date appears twice. A in train and B in test means the same date is on
+   both sides. Is that leakage?
+A: Not target leakage. B's decision exists only in B's own row, and we dropped dec_o,
+   so A's row never contains B's answer. The two rows have different raters, different
+   ratings and different targets.
+
+
+---------------------------------------------------------------------
+3. CLEANING (Čišćenje podataka)
+---------------------------------------------------------------------
+WHAT
+- Duplicates: no full duplicates and no repeated (iid, pid) pairs. A pair (21,40) and
+  (40,21) is NOT a duplicate: two different people, two decisions.
+- [#] 10 rows in wave 5 have no pid (one partner without an iid). Kept, because dec
+  and the ratings are fine.
+- Types: 8 coded categorical columns were read as numbers -> converted to factors with
+  labels (gender, race, race_o, goal, field_cd, career_c, condtn, samerace).
+  We checked that the NA count did not change after conversion (no code got lost).
+- Ordinal: date, go_out (1 = several times a week ... 7 = almost never). Kept numeric.
+- Ratings 1-10 are technically ordinal but kept numeric: a 10-point scale is wide
+  enough and this is standard practice.
+- met: the documentation says 1 = yes, 2 = no, but half the waves used 0 for "no".
+  0 and 2 -> "Ne", 1 -> "Da", other codes (3-8, 8 entries) -> NA.
+- [#] 515 values outside the 1-10 scale -> NA (zeros in ratings, e.g. shar 59 rows,
+  prob 49; gaming = 14, reading = 13; imprace = 0).
+- Preference sums: points must sum to 100. [#] 9 people (question 1) and 19
+  (question 2) deviated, so they were proportionally rescaled to 100.
+- No row was deleted during cleaning. Imputation happens only after the train/test split.
+
+LIKELY QUESTIONS
+Q: Why NA and not cap 13/14 to 10?
+A: We don't know whether the person meant 10 or it was a typo. Treating it as missing
+   is more honest than inventing a value.
+Q: Why not impute now?
+A: Imputing on the whole dataset would let test data influence the medians, which is
+   leakage. The medians are learned on training data only.
+Q: Why are nominal codes converted to factors?
+A: Otherwise the model treats code 8 (business) as "8 times more" than code 1 (law),
+   which is meaningless. Factors become one-hot dummy columns.
+
+
+---------------------------------------------------------------------
+4. MISSING VALUES (Nedostajuće vrednosti)
+---------------------------------------------------------------------
+WHAT
+- Chi-square test: is "rating missing" related to dec?
+- [#] With a complete rating: about 43% "yes". shar missing: 32.1%. fun missing: 19.2%.
+  prob missing: 14%. All p < 0.001.
+- Conclusion: MNAR-like behaviour. People skip ratings when they don't like the partner.
+- Decisions:
+  1. Do not delete rows. We would lose about a quarter of the data, and mostly "no"
+     rows, which would distort the class balance.
+  2. Impute after the split (median for numeric, mode for factors, on train only).
+  3. Keep the signal with broj_na_ocena (number of skipped ratings, chapter 8).
+
+THEORY YOU MUST KNOW
+- MCAR: missing completely at random (no relation to anything).
+- MAR: missingness depends on OTHER observed variables.
+- MNAR: missingness depends on the missing value itself, or on unobserved information.
+- Why median and not mean: the median is robust to skew and outliers.
+- Listwise deletion is fine only for MCAR. With MNAR it biases the data.
+
+LIKELY QUESTIONS
+Q: How do you know it's MNAR and not MAR?
+A: Strictly, MNAR cannot be proven from the data alone. We showed that missingness is
+   strongly tied to the decision (the same moment as the missing rating), which is
+   consistent with "I didn't like them, so I didn't bother". That is why we treat it as
+   informative and keep a missingness feature.
+Q: Why not multiple imputation?
+A: Outside the course. We tried regression imputation as an iteration and it gave the
+   same AUC (0.839 vs 0.839), so the simple median is enough.
+
+
+---------------------------------------------------------------------
+5. OUTLIERS (Ekstremne vrednosti)
+---------------------------------------------------------------------
+WHAT
+- Age is the only truly open scale.
+- [#] IQR = 4, so the bounds are 18-34. 13 people above 34 (8 women, 5 men, ages
+  35-55), 173 dates. All KEPT.
+- z-score (|z| > 3) flags only 4 people (38, 39, 42, 55).
+- IQR on the other columns flags values in 29 columns, but they are all valid answers
+  on bounded scales (1-10, 0-100). IQR is just narrow when people answer similarly.
+
+LIKELY QUESTIONS
+Q: Why keep the outliers?
+A: They are real people. Older graduate students are normal (PhD, MBA). Deleting them
+   would lose 173 dates for no reason. The age effect is softened by razlika_godina.
+Q: Why IQR and not z-score?
+A: z-score uses the mean and sd, which the outliers themselves inflate, and it assumes
+   a normal distribution. Age has a long right tail. IQR is based on quartiles, so it is
+   robust.
+Q: IQR rule?
+A: Outlier if x < Q1 - 1.5*IQR or x > Q3 + 1.5*IQR, where IQR = Q3 - Q1.
+
+
+---------------------------------------------------------------------
+6. EDA (Eksplorativna analiza)
+---------------------------------------------------------------------
+KEY FINDINGS
+- 42% yes / 58% no: a mild imbalance, so we also use F1 and AUC, not only accuracy.
+- Men 47.4% yes vs women 36.5%.
+- [#] Rating gap between yes and no: attr 1.91, like 1.90, shar 1.71, fun 1.62.
+  sinc, intel, amb only 0.66-0.73.
+- [#] Correlation with dec: attr 0.487 (the highest of the six ratings).
+- Ratings are moderately to strongly correlated with each other (multicollinearity).
+- What people SAY they want (intelligence, sincerity) differs from what decides.
+- Idea of one global rating -> prosek_ocena, ponderisana_ocena in chapter 8.
+
+LIKELY QUESTIONS
+Q: Why do sinc/intel/amb matter so little?
+A: They are hard to judge in 4 minutes. Visible things (looks, fun, shared interests)
+   decide a first impression.
+Q: Was EDA done on all data, including the test set? Isn't that snooping?
+A: Yes, EDA used all data. But no model choice (lambda, k, threshold, imputation) was
+   made with the test set. Those were chosen by cross-validation on train only. The
+   EDA findings are strong effects that don't depend on which 110 people ended up in
+   the test set.
+
+
+---------------------------------------------------------------------
+7. STATISTICAL TESTS (Statistički testovi)
+---------------------------------------------------------------------
+GENERAL
+- Rows are not independent, so row-level p-values are a bit too small. We handle this
+  by: (1) the H1 test per person, (2) always reporting effect sizes, which don't depend
+  on n, (3) being careful with borderline results.
+- Mixed models (random effects per person) are outside the course. This is stated in
+  the report.
+- Large n (8,378) means tiny differences become "significant", hence the effect sizes.
+
+H1 - men say yes more
+- [#] Chi-square = 101.36, p < 0.001, Cramer's V = 0.11 (small). 47.4% vs 36.5%.
+- Per person: Shapiro-Wilk rejects normality (about 9% of people said yes to nobody or
+  to everyone), so Mann-Whitney is used instead of the t-test. p < 0.001.
+- The per-person test is the more reliable one (independent observations).
+Q: Why Mann-Whitney? A: The data is not normal, so it's the non-parametric alternative
+   to the t-test. It compares ranks.
+
+H2 - attractiveness matters more for men
+- glm(dec ~ attr * gender, binomial). The interaction is the test.
+- [#] Interaction OR = 1.19, p < 0.001. Each extra point of attr multiplies the odds
+  of "yes" by 2.17 for men vs 1.82 for women.
+Q: Why logistic regression and not chi-square?
+A: attr is a numeric scale and we need to compare SLOPES between genders. That is an
+   interaction term.
+Q: What is an odds ratio?
+A: odds = p/(1-p). OR = exp(coefficient) = how many times the odds change for +1 unit.
+
+H3 - same race, age gap
+- Race: [#] chi-square = 4.35, p = 0.037, V = 0.023 (negligible). 43.4% vs 41.1%.
+- Age: skewness 1.82 (not normal), Shapiro can't be used for n > 5000, so a Q-Q plot.
+  Mann-Whitney p = 0.00013, probability of superiority 0.525 (about 0.5 = no effect).
+  Both medians = 3 years.
+- Conclusion: formally significant (large n), practically negligible.
+Q: Why didn't you use Shapiro for age?
+A: R's shapiro.test accepts at most 5000 observations. We used a Q-Q plot and skewness.
+Q: What is the probability of superiority?
+A: P(a random "no" date has a larger age gap than a random "yes" date). 0.5 = no effect.
+
+H4 - stated vs revealed preferences
+- Main check: a logistic regression per gender on the 6 STANDARDIZED ratings. The rank
+  of the coefficients (revealed) is compared with the rank of the pre-event points
+  (stated).
+  [#] Women: intelligence 1st in the questionnaire (21 points), but coefficient only
+      0.19 (4th). attr coefficient 0.81 (1st). shar jumps from last to 2nd (0.59).
+  [#] Men: attr is 1st in both (27.2 points, coefficient 1.25). intel is 2nd in the
+      questionnaire but coefficient -0.04 (CI includes 0).
+- Supplementary check: paired Wilcoxon, attr1_1 vs attr7_2, waves 15-21, n = 123.
+  [#] attr 23.9 -> 32.2 points. intel 20.1 -> 15.8, sinc 17.0 -> 14.2, amb 9.2 -> 7.4,
+      all p < 0.001. fun, shar p about 0.65 (no change).
+- BUG WE FIXED: previously every p-value was 1, because the test ran on the two rounded
+  means instead of the 123 pairs. If asked: "We found it, the test now runs on all
+  123 pairs, and the conclusion stayed the same."
+Q: Why standardize the ratings in H4?
+A: So the coefficients are on the same scale and can be ranked. Each coefficient is the
+   effect of +1 standard deviation.
+Q: Why do sinc and amb have negative coefficients?
+A: Multicollinearity. Holding attr/fun/shar fixed, a high sinc alone often means a
+   "polite high rating" given to someone the person rejected.
+Q: Why paired Wilcoxon?
+A: The same person answers twice (before/after), so the samples are dependent, and the
+   differences are not normal.
+Q: Ranking comparison is not a formal test?
+A: Correct, it is descriptive. The confidence intervals (attr 0.69-0.92 vs intel
+   0.05-0.33 for women do not overlap) and the Wilcoxon test are the formal part.
+
+H5 - hypergamy
+- Status = the partner's planned career (law, medicine, finance/banking = high),
+  read via pid from the partner's questionnaire.
+- Classic hypergamy by education can't be tested: everyone is a Columbia grad student.
+  income is a zip-code median and 49% missing, so it is not used.
+- [#] Women: 38.0% yes to high status vs 34.7%. Men: 55.3% vs 44.6%.
+  Interaction OR = 1.33 (95% CI 1.11-1.61), p = 0.003, in FAVOUR OF MEN (the opposite
+  of hypergamy).
+- Controlling for attr, fun, shar: the effect disappears for women (p = 0.88) but
+  stays for men (interaction p = 0.032). Men rated high-status women as more attractive
+  (6.76 vs 6.35).
+- Conclusion: NOT confirmed.
+Q: Is a null result a problem?
+A: No. It is honest science. We tested the claim, and the data does not support it.
+Q: Limitations? A: career is planned, not actual; similar education for everyone;
+   4 minutes is not choosing a spouse; row-level p-values are slightly optimistic.
+
+MULTIPLE TESTING
+- 5 hypotheses. Bonferroni: 0.05/5 = 0.01. All main results survive, except race in H3
+  (p = 0.037), which we already call negligible.
+
+
+---------------------------------------------------------------------
+8. FEATURE ENGINEERING (Nove promenljive)
+---------------------------------------------------------------------
+NEW COLUMNS (and why)
+- razlika_godina = |age - age_o|: H3, and it softens the extreme ages.
+- stariji_partner = age_o - age: the DIRECTION of the age gap (non-linear pattern).
+- prosek_ocena = mean of the 6 ratings: one global rating.
+- attr_relativno = attr minus the person's mean attr over the evening: removes the
+  difference between strict and lenient raters. [#] r = 0.448. Bottom quintile 10.5%
+  yes, top quintile 73.7%.
+- ponderisana_ocena = ratings weighted by the person's own 100-point preferences: how
+  well the partner fits the stated criteria.
+- relativni_redosled = order / number of dates (0-1): a fatigue effect. Result: none
+  (40.4-43% yes in all quarters of the evening).
+- broj_na_ocena = number of skipped ratings (0-8): keeps the MNAR signal.
+  [#] 0 skipped: 43.5%, 4-7 skipped: 25.4%, all 8 skipped: 2.1% yes.
+- ista_oblast = participant and partner study the same field.
+  [#] 48.5% vs 41.3%, chi-square = 18.13, p < 0.001. Only 960 dates (about 12%).
+  Still holds when controlling for field_cd and int_corr (OR 1.28, p = 0.0004), so it
+  is not just "business students are many".
+- Rare categories: field_cd and career_c levels with < 10 PARTICIPANTS merged into
+  "Ostalo". [#] field_cd 18 -> 13 levels, career_c 17 -> 11 (11 fewer dummy columns).
+- Global ratings alone: [#] AUC prosek_ocena 0.759, ponderisana_ocena 0.765, attr 0.789.
+
+LIKELY QUESTIONS
+Q: Why merge rare categories? Why 10?
+A: With a split by person, a level with 1-3 people may end up only in the test set,
+   and a dummy column that is 1 for 1-3 people describes those individuals, not a
+   pattern (noise, overfitting). 10 is a simple rule so each level appears in both train
+   and test. It does not use dec, so it is not leakage.
+Q: Counted on all data, including test?
+A: Only the number of people per category was counted, never the target. That is
+   harmless, but it could also be done on train only.
+Q: Is attr_relativno leakage?
+A: It doesn't use dec. But it uses the mean over the whole evening, so for early dates
+   it includes later ratings. That means the model works in a "end of the evening, all
+   forms collected" scenario. This is stated as a limitation.
+Q: prosek_ocena has VIF 72.7. Why keep it?
+A: It is almost a linear combination of the 6 ratings. That hurts coefficient
+   interpretation in plain logistic regression, not prediction. Lasso/ridge handle
+   collinearity.
+Q: Why compute broj_na_ocena before imputation?
+A: After imputation the missing values are filled in and the information is gone.
+
+
+---------------------------------------------------------------------
+9. MACHINE LEARNING (Mašinsko učenje)
+---------------------------------------------------------------------
+SPLIT
+- By PARTICIPANT (iid), 80/20, set.seed(2026).
+- [#] Train: 441 people, 6,732 rows, 42.7% yes. Test: 110 people, 1,646 rows, 39.1% yes.
+  Overlap of people = 0.
+Q: Why by person? A: Otherwise the same person is in both train and test, the model
+   learns their personal habits, and the results are unrealistically good.
+Q: Why 80/20? A: A common convention. 110 test people is enough for a stable estimate,
+   and the bootstrap CI shows the remaining uncertainty.
+Q: Why seed 2026? A: Reproducibility. The number itself is arbitrary.
+
+PREPARATION - pripremi() (learned on TRAIN ONLY, then applied to test)
+1. Imputation: median (numeric), mode (factors).
+2. One-hot encoding with model.matrix, dropping the first (reference) level, which
+   avoids the dummy-variable trap (perfect collinearity with the intercept).
+3. Standardization (mean 0, sd 1) with TRAIN means and sds. Constant columns removed.
+[#] X_tr = 6,732 x 96 columns.
+
+SCALING - which models? ALL of them, because they all use pripremi(). But it matters
+differently:
+- kNN: ESSENTIAL (Euclidean distance; otherwise 0-100 point columns dominate 1-10 ratings).
+- ridge/lasso: needed so the penalty treats all coefficients equally (glmnet also
+  standardizes internally).
+- logistic regression: predictions do NOT change, only the coefficients become
+  comparable.
+- baseline: no effect.
+
+METRICS
+- accuracy, precision, recall, specificity, F1, AUC. AUC is the main metric.
+- AUC = P(a random "yes" date gets a higher probability than a random "no" date).
+  It is the same as the Mann-Whitney statistic, which is why it is computed via ranks.
+  0.5 = random, 1 = perfect. It does not depend on the threshold.
+- F1 = harmonic mean of precision and recall. Useful with imbalanced classes.
+Q: Why not only accuracy? A: With 58% "no", a model that always says "no" has 58%
+   accuracy and is useless.
+
+CROSS-VALIDATION
+- 5-fold, folds BY PERSON, on train only. pripremi() is re-learned inside every fold.
+- Inside cv.glmnet: another inner 5-fold CV by person to choose lambda (nested).
+- The test set is untouched until the end.
+
+MODELS
+- Baseline: always predicts the training share of "yes" (0.427 < 0.5, so always "no").
+- Logistic regression (glm): basic parametric, interpretable model.
+- Ridge (alpha = 0): penalty lambda * sum(beta^2). Shrinks coefficients, helps with
+  multicollinearity, never exactly 0.
+- Lasso (alpha = 1): penalty lambda * sum(|beta|). Sets some coefficients to EXACTLY 0,
+  which gives automatic feature selection.
+- kNN: the share of "yes" among the k nearest dates (Euclidean). Non-parametric.
+Q: Why not linear regression? A: For a 0/1 target it predicts values outside [0, 1],
+   which can't be probabilities. Logistic regression models log(p/(1-p)).
+Q: Why not trees / random forest / SVM? A: Not in the course syllabus, and we want
+   simple, interpretable models. Linear models already do well because "yes" grows
+   roughly monotonically with the ratings.
+Q: Why does lasso give exact zeros and ridge doesn't? A: The L1 penalty has "corners"
+   at zero (the geometry of the |beta| diamond), so the optimum often lands exactly on
+   an axis. L2 (a circle) only shrinks.
+
+CV RESULTS [#]
+- Lasso 0.839 (accuracy 76.0%, F1 0.706), Ridge 0.834, Logistic 0.819 (75.1%),
+  kNN (k = 51) 0.772, baseline accuracy 57.3%.
+- Baseline CV AUC shows 0.47 instead of 0.50: each fold predicts a different constant,
+  and pooling the 5 folds ranks the folds against each other. Not a bug.
+- With like/prob: logistic 0.819 -> 0.844, lasso 0.839 -> 0.858. A MODERATE
+  improvement (about 2 points), so like adds some information but not much.
+
+
+---------------------------------------------------------------------
+10. ITERATIONS (Iteracije modela)
+---------------------------------------------------------------------
+- lambda: [#] lasso lambda.min = 0.0178, CV AUC 0.84. A small lambda overfits, a large
+  lambda removes useful columns (the bias-variance trade-off).
+- k for kNN: [#] the grid 5-151. With all 96 columns kNN is weak (curse of
+  dimensionality). With only 13 columns (6 ratings + 7 new) and k = 101: AUC 0.831.
+  kNN (k = 51, all columns) 0.772 -> 0.831 after narrowing.
+  Q: Why odd k? A: No tied votes between 2 classes.
+  Q: Small vs large k? A: small k = flexible, low bias, high variance; large k =
+     smooth, higher bias, low variance.
+- Lasso coefficients: [#] keeps 17 of 96 (79 set to 0). Top: attr_relativno 0.519,
+  shar 0.419, attr 0.398, fun 0.328, broj_na_ocena -0.230.
+- VIF: [#] prosek_ocena 72.7. Without it, the 6 ratings have VIF 1.6-3.9 and
+  ponderisana_ocena 12.7. VIF = 1/(1 - R^2) of that predictor regressed on the others.
+  > 5 or > 10 = a problem. Don't put all 6 preference points in one VIF check: they sum
+  to 100 (perfect collinearity).
+- attr^2 + attr x gender: [#] AUC 0.819 -> 0.821. A statistically significant effect
+  (H2) is not the same as better prediction.
+- Imputation: median 0.839 vs regression 0.839, so we keep the simple median.
+  broj_na_ocena already carries the missingness signal.
+- Threshold: [#] lasso CV specificity 82.3% vs recall 67.5% at 0.5. Best F1 = 0.736 at
+  threshold 0.35 (chosen in CV, NOT on test). This is how we handle class imbalance
+  (instead of oversampling).
+
+FINAL TEST (used ONCE)
+- Lasso step by step: split -> pripremi on train -> cv.glmnet picks lambda on train
+  (folds by person) -> refit on the whole train -> probabilities for test ->
+  threshold 0.5 -> confusion matrix and metrics.
+- [#] The lasso in the walkthrough: lambda = 0.026, 13 columns (slightly different from
+  17 because of a different random fold split; the AUC curve is flat near its maximum).
+- [#] Test AUC: logistic 0.826, ridge 0.822, LASSO 0.821 (accuracy 74.4%), kNN 0.813,
+  baseline 0.50 (accuracy 60.9%).
+- [#] Confusion matrix (lasso, 0.5): TP 409, FN 235, FP 186, TN 816.
+- [#] Threshold 0.35 on test: recall 63.5% -> 83.9%, F1 0.660 -> 0.690.
+- [#] With like/prob on test: AUC 0.848, accuracy 76.9%.
+- [#] Bootstrap 95% CI for lasso test AUC: 0.786-0.855 (1000 resamples of PEOPLE).
+Q: Logistic beat lasso on test. Why do you call lasso the main model?
+A: The model was chosen BEFORE the test, by CV. Switching after looking at the test
+   would turn the test set into another validation set and the estimate would no longer
+   be honest. Also the difference (0.005) is far smaller than the bootstrap CI width,
+   and lasso uses only 17 columns.
+Q: Why bootstrap by person and not by row? A: To keep the dependence between rows of
+   the same person (the same reason as the split).
+Q: What does the percentile CI mean? A: The 2.5% and 97.5% quantiles of the 1000
+   bootstrap AUCs.
+
+
+---------------------------------------------------------------------
+11. CONCLUSION - limitations to say yourself before he asks
+---------------------------------------------------------------------
+- Sample: Columbia grad students, so results do not generalize to everyone.
+- Repeated measures: handled by grouping (split, CV, bootstrap), but no mixed models
+  (outside the course).
+- attr_relativno uses the whole evening ("end of evening" scenario).
+- 4 minutes = first impression only.
+- MNAR ratings handled with broj_na_ocena.
+
+
+=====================================================================
+PART B - COURSE THEORY HE CAN ASK (the oral exam covers the whole course)
+=====================================================================
+- Data types: nominal, ordinal, interval, ratio. Our examples: race (nominal),
+  go_out (ordinal), age (ratio).
+- Anomalies: IQR rule, z-score; error vs genuine extreme value.
+- MCAR / MAR / MNAR; deletion vs imputation (mean, median, mode, regression).
+- One-hot encoding; the reference level; the dummy-variable trap.
+- Statistical learning: prediction vs inference; parametric vs non-parametric.
+- Bias-variance trade-off: flexible models have low bias and high variance;
+  test error = bias^2 + variance + irreducible error.
+- Overfitting: good on train, bad on new data. Fix it with CV and regularization.
+- kNN: distance, the choice of k, scaling, the curse of dimensionality.
+- Linear regression: least squares, interpretation of coefficients, R^2, interactions,
+  polynomial terms, VIF / multicollinearity, AIC/BIC (penalize complexity; BIC
+  penalizes more).
+- Logistic regression: logit = log(p/(1-p)), odds ratio = exp(beta), maximum likelihood.
+- Train/test, validation set, k-fold CV, LOOCV (n folds; low bias, high variance,
+  expensive).
+- Bootstrap: resampling WITH replacement, used to estimate the SE / CI of a statistic.
+- Ridge / lasso / elastic net (alpha between 0 and 1); the role of lambda;
+  lambda.min vs lambda.1se (the simplest model within 1 SE of the best).
+- PCR / PCA: components = linear combinations of maximum variance. We did NOT use it,
+  because lasso keeps interpretable original columns.
+- Clustering (k-means, hierarchical): we did not use it, because our task is supervised.
+- Hypothesis tests: H0/H1, p-value (P(data this extreme | H0), NOT P(H0 true)),
+  type I/II errors, power, parametric vs non-parametric, normality checks
+  (Shapiro, Q-Q plot), chi-square, t-test vs Mann-Whitney, paired tests, effect size.
+
+
+=====================================================================
+PART C - KNOWN WEAK SPOTS AND PREPARED ANSWERS
+=====================================================================
+1. exphappy (expected happiness with the evening, asked BEFORE the event, 1.2% missing)
+   was originally dropped without a real reason. FIXED: it is now kept as a participant
+   variable (64 columns, 96 model columns). If asked: "It was collected before the date,
+   so it is not leakage, and it has almost no missing values."
+2. Row-level tests ignore repeated measures (H2, H3, H5, ista_oblast).
+   -> Effect sizes, the per-person H1 test, careful interpretation; mixed models are
+   outside the course (stated in the report).
+3. EDA and the hypotheses used all data, including the test participants.
+   -> Every model choice was made with CV on train. The test set was used once.
+4. Logistic slightly beats lasso on test. -> See chapter 10 above.
+5. Thresholds (10 people, 0.35) are rules of thumb. -> Simple and stated; 0.35 came
+   from CV.
+6. H4 ranking is descriptive. -> The CIs and the paired Wilcoxon are the formal part.
+7. ista_oblast and H5 were added after a reviewer's suggestion (post hoc).
+   -> Present them as exploratory checks.
+8. Baseline CV AUC 0.47. -> Constant predictions differ per fold. Not a bug.
+9. The data frame is named "sd", like the function sd(). -> It works because R
+   searches only for FUNCTIONS when it sees sd(...), skipping data objects. It is a
+   naming choice, not an error.
+10. Global warning = FALSE / message = FALSE in setup. -> Used to keep package
+    loading messages out of the report. NOT YET CHECKED which warnings it hides
+    (worth one knit with warnings on before the defence).
+11. The report's length (about 90 pages). -> Being shortened.
+12. Is the missingness MNAR or MAR? -> It is clearly NOT random (not MCAR). It behaves
+    like MNAR (a rating is missing because it would be low), but that cannot be proven
+    from data, and since dec is always known, it is partly MAR. What matters: it carries
+    information, so we keep broj_na_ocena.
+13. H5 second model (controlling attr, fun, shar): attractiveness may be a MEDIATOR
+    (status -> seen as more attractive -> yes), so controlling for it removes part of
+    the effect. The first model is the main result. And H0 IS rejected, just in the
+    opposite direction (status matters more for men).
+14. kNN k = 101, the 13 kNN columns and threshold 0.35 were chosen on the same CV
+    results we show, so those CV numbers are slightly optimistic. The test set gives the
+    honest estimate. (lambda is chosen in a nested CV, so it is fine.)
+15. The bootstrap resamples only test participants and does not refit the model, so the
+    CI covers test-set variability, not training variability.
+16. broj_na_ocena predicts well but is NOT a cause of the decision. It is a side effect
+    of people not finishing the form for partners they reject. Prediction is not causation.
+17. Rare-category merging counted people in the whole dataset (test included), but never
+    the target, so the effect is negligible.
+18. H4 logistic model uses only complete forms (drop_na). Stated in the report.
+19. The future-work "contrast effect" is already published: Bhargava & Fisman (2014).
+    Cited in the report.
