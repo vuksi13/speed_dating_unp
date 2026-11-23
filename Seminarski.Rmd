@@ -34,7 +34,7 @@ data <- read_csv("data/raw/Speed Dating Data.csv",
 
 Osnova Speed Dating skupa podataka koji analiziramo u ovom radu jeste eksperiment koji su sproveli profesori Ray Fisman i Sheena Iyengar sa Univerziteta Kolumbija u periodu između 2002. i 2004. godine. Glavna ideja eksperimenta bila je da se ispita da li muškarci i žene biraju partnere na različit način, a rezultati su objavljeni 2006. godine u radu Gender Differences in Mate Selection: Evidence From a Speed Dating Experiment (Fisman, Iyengar, Kamenica i Simonson, časopis The Quarterly Journal of Economics). Skup podataka koji koristimo javno je dostupan na platformi Kaggle pod nazivom Speed Dating Experiment, zajedno sa dokumentacijom kolona Speed Dating Data Key.
 
-U istraživanju je učestvovao ukupno 551 student postdiplomskih studija Univerziteta Kolumbija kroz 21 zaseban događaj, što se u podacima vodi kao talas ili wave. Učesnici nisu bili sa jednog fakulteta, već sa različitih škola univerziteta (biznis, pravo, medicina, inženjerstvo, društvene nauke i druge), na master, doktorskim i profesionalnim programima. Medijana starosti učesnika iznosi 26 godina, dok se raspon kreće od 18 do 55 godina, jer na ovakve programe upisuju i ljudi koji su već godinama u radnom odnosu.
+U istraživanju je učestvovao ukupno 551 student postdiplomskih studija Univerziteta Kolumbija kroz 21 zaseban događaj, što se u podacima vodi kao talas ili wave. Učesnici nisu bili sa jednog fakulteta, već sa različitih škola univerziteta (biznis, pravo, medicina, inženjerstvo, društvene nauke i druge), na master, doktorskim i profesionalnim programima. Medijana starosti učesnika iznosi 26 godina, dok se raspon kreće od 18 do 55 godina, jer na ovakve programe upisuju i ljudi koji su već godinama u radnom odnosu. Troje učesnika ima 18 ili 19 godina, što je neobično za postdiplomske studije, ali to iz podataka ne možemo da proverimo, pa ove vrednosti zadržavamo.
 
 ## Kako je izgledao jedan događaj
 
@@ -229,7 +229,33 @@ Ostale kolone izbacujemo prema istim pravilima:
 | Upotrebljivost | `zipcode`, `from`, `undergra` | Slobodan tekst sa stotinama različitih vrednosti |
 | Upotrebljivost | `position`, `positin1` | Broj stola ne govori ništa o konkretnom partneru |
 
-Od podataka o partneru zadržavamo samo starost i rasu, jer su to osobine koje učesnik može da vidi ili čuje tokom razgovora, a trebaju nam i za hipotezu H3. Za sličnost po oblasti studija nije potrebna nova kolona, jer partnerovu oblast možemo da pročitamo preko njegovog iid broja (kolona pid), pa ćemo u osmom poglavlju napraviti promenljivu ista_oblast i testirati je. Kraj iz kog osoba dolazi ne možemo pouzdano da uporedimo, jer kolona from ima 269 različitih upisa na 551 učesnika (isto mesto je upisano kao „New York", „NYC" ili „Manhattan"), a poštanski broj nedostaje kod 76 učesnika.
+Od podataka o partneru zadržavamo samo starost i rasu, jer su to osobine koje učesnik može da vidi ili čuje tokom razgovora, a trebaju nam i za hipotezu H3. Za sličnost po oblasti studija nije potrebna nova kolona, jer partnerovu oblast možemo da pročitamo preko njegovog iid broja (kolona pid), pa ćemo u osmom poglavlju napraviti promenljivu ista_oblast i testirati je.
+
+Kraj iz kog osoba dolazi teže je uporediti, jer kolona from ima 269 različitih upisa na 551 učesnika (isto mesto je upisano kao „New York", „NYC" ili „Manhattan"). Zato okvirnu proveru radimo preko prve tri cifre poštanskog broja, koje označavaju širu oblast:
+
+```{r isti-kraj}
+kraj_po_osobi <- data %>%
+  distinct(iid, .keep_all = TRUE) %>%
+  transmute(iid, zip = str_remove_all(zipcode, "[^0-9]")) %>%
+  mutate(zip = if_else(nchar(zip) == 4, paste0("0", zip), zip),
+         kraj = if_else(nchar(zip) == 5, str_sub(zip, 1, 3), NA_character_))
+
+isti_kraj <- data %>%
+  filter(!is.na(pid)) %>%
+  select(iid, pid, dec) %>%
+  left_join(select(kraj_po_osobi, iid, kraj_ucesnika = kraj), by = "iid") %>%
+  left_join(select(kraj_po_osobi, pid = iid, kraj_partnera = kraj), by = "pid") %>%
+  filter(!is.na(kraj_ucesnika), !is.na(kraj_partnera)) %>%
+  mutate(isti = kraj_ucesnika == kraj_partnera)
+
+isti_kraj %>%
+  group_by(isti) %>%
+  summarise(sastanaka = n(), udeo_da = round(100 * mean(dec), 1))
+
+chisq.test(table(isti_kraj$isti, isti_kraj$dec))$p.value
+```
+
+Iz iste šire oblasti je samo 74 od 5.160 sastanaka na kojima znamo poštanski broj oba učesnika. Na njima je odgovor „da" bio u 48,6% slučajeva, naspram 42,4% na ostalim, ali razlika nije statistički značajna (p = 0,34). Uz tako mali broj parova ovaj rezultat nije dokaz ni u jednom smeru, pa ovu informaciju ne dodajemo u modele.
 
 Kolona int_corr ostaje iako je izračunata iz upitnika oba učesnika. Za curenje podataka presudno je vreme nastanka, a ti upitnici su popunjeni pre događaja, pa ova vrednost postoji pre sastanka i ne govori ništa o njegovom ishodu. Kolonu condtn zadržavamo kao eksperimentalni uslov studije (manji ili veći izbor partnera). Ocene like i prob nastaju na samom sastanku i tehnički ne prave curenje podataka, ali pitanje like praktično meri isto što i odluka, pa glavne modele treniramo bez ove dve kolone, a poređenje sa njima prikazujemo posebno.
 
@@ -252,25 +278,22 @@ Time smo početni skup sveli na tabelu sd sa 8.378 redova i 64 kolone: ciljnu pr
 
 # Čišćenje podataka
 
-U ovom delu prolazimo kroz odabrane 64 kolone kako bismo proverili da li se podaci u tabeli slažu sa opisima iz dokumentacije i ispravili sve nepravilnosti. To podrazumeva proveru duplikata, sređivanje tipova promenljivih, rešavanje nekonzistentnih šifara kod kolone met, brisanje nemogućih vrednosti koje iskaču van opsega skale i normalizaciju poena u uvodnom upitniku.
+U ovom poglavlju proveravamo da li se odabrane 64 kolone slažu sa dokumentacijom i ispravljamo nepravilnosti. Nijedan red ne brišemo, već neispravne vrednosti prebacujemo u NA, a njima se bavimo u narednom poglavlju.
 
-## Duplikati
+## Duplikati i usklađenost parova
 
-Prvo proveravamo da li u tabeli postoje duplirani redovi koji bi mogli da pokvare rezultate analize. Gledamo dve stvari, a to su potpuno identični redovi u svim kolonama i ponovljeni parovi identifikatora iid i pid koji bi značili da je isti sastanak iz ugla iste osobe upisan više puta:
+Prvo proveravamo da li postoje potpuno identični redovi i da li je isti par učesnik-partner upisan više puta:
 
-```{r duplikati-potpuni}
+```{r duplikati}
 sum(duplicated(sd))
-```
 
-```{r duplikati-parovi}
 sd %>%
   count(iid, pid) %>%
-  filter(n > 1)
+  filter(n > 1) %>%
+  nrow()
 ```
 
-Vidimo da u skupu nema ni potpunih duplikata ni ponovljenih parova učesnik-partner. Ovde je važno napomenuti da dva reda koja opisuju isti susret iz ugla dve različite osobe, recimo par iid = 21, pid = 40 i par iid = 40, pid = 21, ne predstavljaju duplikate. Svaki od ta dva reda nosi nezavisnu odluku i ocene druge osobe, pa oba reda moraju da ostanu u tabeli.
-
-Prilikom grupisanja po koloni pid primetili smo da u nekoliko redova ova vrednost nedostaje, pa smo proverili o čemu se radi:
+Duplikata nema. Dva reda istog sastanka, recimo iid = 21, pid = 40 i iid = 40, pid = 21, nisu duplikati jer nose odluke i ocene dve različite osobe. U nekoliko redova nedostaje oznaka partnera pid:
 
 ```{r pid-nedostaje}
 data %>%
@@ -278,34 +301,49 @@ data %>%
   count(wave, partner)
 ```
 
-Radi se o 10 redova sa petog događaja koji se svi odnose na istog partnera sa rednim brojem 7, kome iz nekog razloga u bazi nije upisan jedinstveni iid. Pošto svaki od tih 10 učesnika ima samo po jedan takav sastanak, ovde nema nikakvih duplikata. Te redove zadržavamo jer imaju uredno popunjenu odluku dec i ocene sa sastanka, a sam identifikator pid nam svakako ne ulazi u modele.
+Radi se o 10 redova sa petog događaja u kojima je 10 muškaraca upoznalo istu učesnicu sa rednim brojem 7. Ta osoba nema sopstvene redove u tabeli, pa nema ni jedinstveni iid. Redove zadržavamo jer imaju odluku i ocene, ali starost, rasa, oblast i karijera te osobe ostaju nepoznati.
+
+Pošto se svaki sastanak pojavljuje dva puta, možemo da proverimo i da li se ta dva reda međusobno slažu. Za svaki red tražimo red iz ugla partnera i poredimo starost i rasu partnera sa onim što je ta osoba upisala o sebi:
+
+```{r provera-parova}
+parovi <- data %>%
+  filter(!is.na(pid)) %>%
+  select(iid, pid, age_o, race_o, met_o) %>%
+  inner_join(data %>%
+               select(pid = iid, iid = pid, age_partnera = age,
+                      race_partnera = race, met_partnera = met),
+             by = c("iid", "pid"))
+
+tibble(redova_sa_partnerom = sum(!is.na(data$pid)),
+       ima_drugi_red = nrow(parovi),
+       razlicita_starost = sum(parovi$age_o != parovi$age_partnera, na.rm = TRUE),
+       razlicita_rasa = sum(parovi$race_o != parovi$race_partnera, na.rm = TRUE))
+```
+
+Svih 8.368 redova sa poznatim partnerom ima svoj par, a starost i rasa se uvek poklapaju. Jedini izuzetak nalazimo kod kolone samerace, koja je upisana i u redovima gde rasa jednog od učesnika nije poznata:
+
+```{r samerace-nepoznata-rasa}
+data %>%
+  filter(is.na(race) | is.na(race_o)) %>%
+  count(samerace)
+```
+
+U tih 136 redova (1,6% tabele) samerace ima vrednost 0, iako zapravo ne znamo da li su osobe iste rase. Zato ih izostavljamo iz testa hipoteze H3 u sedmom poglavlju, dok kolonu za modele ostavljamo kakva jeste.
 
 ## Tipovi promenljivih
 
-Pošto su u izvornom fajlu sve kategorije šifrovane brojevima, R ih je prilikom učitavanja automatski prepoznao kao obične numeričke kolone. Kada bismo nominalne promenljive poput rase ili oblasti studija ostavili kao brojeve, modeli bi ih tretirali kao količine, što nema nikakvog smisla jer šifra 8 za biznis nije „osam puta veća" od šifre 1 za pravo. Zbog toga sve kolone razvrstavamo po tipu i prilagođavamo ih pre dalje analize:
+Kategorije su u izvornom fajlu šifrovane brojevima, pa ih je R učitao kao numeričke kolone. Modeli bi ih tada tretirali kao količine, iako šifra 8 za biznis nije „osam puta veća" od šifre 1 za pravo. Zato kolone razvrstavamo po tipu:
 
 | Tip | Kolone | Postupak |
 |------------------|----------------------------|---------------------------|
 | Nominalne kategorije | `gender`, `race`, `race_o`, `goal`, `field_cd`, `career_c`, `condtn`, `samerace` | Pretvaramo u faktore sa nazivima iz dokumentacije |
-| Ordinalne | `date`, `go_out` | Ostaju numeričke, gde skala ide od 1 za više puta nedeljno do 7 za skoro nikad |
+| Ordinalne | `date`, `go_out` | Ostaju numeričke, gde 1 znači više puta nedeljno, a 7 skoro nikad |
 | Numeričke | starost, ocene od 1 do 10, poeni od 100, interesovanja, int_corr, order | Bez promene |
 | Identifikatori | `iid`, `pid`, `wave` | Bez promene, služe samo za grupisanje i podelu skupa |
 
-Iako su ocene od 1 do 10 strogo gledano ordinalne, u praksi ih zadržavamo kao numeričke promenljive jer imaju dovoljno široku skalu sa deset podeoka. Kod promenljivih date i go_out zadržavamo originalnu skalu od 1 do 7 uz podsetnik da veći broj znači ređe izlaske, dok ciljnu promenljivu dec ostavljamo u formatu 0 i 1 jer nam je tako najlakše da računamo procente potvrdnih odgovora.
+Ocene od 1 do 10 su strogo gledano ordinalne, ali ih zbog deset podeoka zadržavamo kao numeričke. Kod date i go_out treba imati na umu da veći broj znači ređe izlaske, što je važno pri tumačenju modela. Odluku dec ostavljamo kao 0 i 1 jer se tako najlakše računa procenat odgovora „da".
 
-Pre nego što nominalne kolone pretvorimo u faktore, izbrojaćemo koliko u njima trenutno ima nedostajućih vrednosti. Ovo je dobra provera jer funkcija factor() svaku nepoznatu šifru koju nismo naveli u listi nivoa automatski pretvara u NA:
-
-```{r tipovi-pre}
-kategorijske <- c("gender", "race", "race_o", "goal", "field_cd",
-                  "career_c", "condtn", "samerace")
-
-na_pre <- sd %>%
-  summarise(across(all_of(kategorijske), ~ sum(is.na(.x))))
-
-na_pre
-```
-
-```{r tipovi-konverzija}
+```{r tipovi-nazivi, echo = FALSE}
 rase <- c("Afroamerička", "Evropska/bela", "Latinoamerička",
           "Azijska", "Indijanska", "Ostalo")
 
@@ -326,6 +364,16 @@ karijere <- c("Pravnik", "Akademska karijera/istraživanje", "Psiholog",
               "Međunarodni/humanitarni poslovi", "Neopredeljeni",
               "Socijalni rad", "Logopedija", "Politika", "Profesionalni sport",
               "Ostalo", "Novinarstvo", "Arhitektura")
+```
+
+Funkcija factor() svaku šifru koju nismo naveli pretvara u NA, pa broj praznih polja brojimo pre i posle konverzije. Nazive kategorija čuvamo u vektorima rase, ciljevi, oblasti i karijere:
+
+```{r tipovi-konverzija}
+kategorijske <- c("gender", "race", "race_o", "goal", "field_cd",
+                  "career_c", "condtn", "samerace")
+
+na_pre <- sd %>%
+  summarise(across(all_of(kategorijske), ~ sum(is.na(.x))))
 
 sd <- sd %>%
   mutate(
@@ -339,58 +387,47 @@ sd <- sd %>%
                       labels = c("Mali događaj", "Veliki događaj")),
     samerace = factor(samerace, levels = c(0, 1), labels = c("Ne", "Da"))
   )
-```
 
-Sada proveravamo da li je broj praznih polja u ovim kolonama ostao isti i nakon prebacivanja u faktore:
-
-```{r tipovi-provera}
 na_posle <- sd %>%
   summarise(across(all_of(kategorijske), ~ sum(is.na(.x))))
 
 all(na_pre == na_posle)
 ```
 
-Vrednost TRUE potvrđuje da nismo slučajno izbrisali nijedan podatak i da su sve postojeće šifre pravilno mapirane na tekstualne nazive. Sada umesto nepreglednih brojeva u tabelama i na graficima odmah vidimo stvarne nazive kategorija, kao na primeru raspodele učesnika po rasi:
-
-```{r tipovi-primer}
-sd %>%
-  distinct(iid, .keep_all = TRUE) %>%
-  count(race)
-```
-
-Primećujemo da u našem uzorku nema nijednog učesnika starosedelačkog porekla, pa ta kategorija uopšte ne figuriše u ispisu iznad. Sam nivo faktora za sada ostaje u definiciji kolone, a prilikom pripreme matrica za modele automatski ćemo izbaciti sve prazne nivoe.
+Vrednost TRUE potvrđuje da su sve postojeće šifre pravilno mapirane. U uzorku nema nijednog učesnika starosedelačkog porekla, pa je taj nivo prazan i automatski ga izbacujemo pri pripremi matrica za modele.
 
 ## Promenljiva met
 
-Kolona met bi trebalo da označava da li su se učesnik i partner poznavali pre dolaska na događaj, pri čemu u dokumentaciji stoji da je 1 šifra za „da", a 2 za „ne". Međutim, kada izbrojimo sve vrednosti koje se zaista javljaju u tabeli, dobijamo prilično drugačiju sliku:
+Kolona met označava da li su se učesnik i partner poznavali pre događaja, a prema dokumentaciji 1 znači „da", a 2 „ne". U tabeli se ipak javljaju i druge vrednosti:
 
 ```{r met-vrednosti}
 sd %>%
   count(met)
 ```
 
-Pored očekivanih brojeva 1 i 2, u koloni imamo čak 4.047 nula koje se u dokumentaciji uopšte ne spominju, kao i osam potpuno čudnih vrednosti od 3 do 8. Kako bismo otkrili odakle dolaze tolike nule, izlistali smo vrednosti ove kolone po događajima:
+Pored šifara 1 i 2 imamo čak 4.047 nula koje dokumentacija ne pominje i osam vrednosti od 3 do 8. Da bismo videli odakle dolaze nule, proveravamo u kojim talasima se javljaju nula i dvojka:
 
 ```{r met-po-talasu}
 sd %>%
-  count(wave, met) %>%
-  pivot_wider(names_from = met, values_from = n,
-              values_fill = 0, names_sort = TRUE)
+  filter(met %in% c(0, 2)) %>%
+  distinct(wave, met) %>%
+  group_by(met) %>%
+  summarise(talasi = paste(sort(wave), collapse = ", "))
 ```
 
-Tabela po talasima odmah rešava misteriju. Na događajima 1 do 6, zatim 8, 9 i od 15 do 17 korišćene su šifre 1 i 2, dok se na događajima 7, od 10 do 14 i od 18 do 21 umesto dvojke pojavljuje isključivo nula. Očigledno je da su organizatori na polovini događaja odričan odgovor šifrovali nulom umesto dvojkom.
-
-Da bismo bili potpuno sigurni u ovo, možemo da uporedimo odgovore učesnika sa kolonom met_o, gde je partner odgovarao na isto to pitanje za njihov susret, a gde su kroz sve talase korišćene samo šifre 1 i 2:
+Na događajima 7, 10 - 14 i 18 - 21 odgovor „ne" je upisivan kao nula umesto kao dvojka , sa jedinim izuzetkom , dvojka u talasu 10. Ovo možemo i direktno da potvrdimo. Kolona met_o u svakom redu treba da sadrži ono što je partner odgovorio u svom redu, pa proveravamo da li se poklapa sa partnerovom kolonom met kada njegovu nulu zamenimo dvojkom:
 
 ```{r met-provera-partner}
-table(met = data$met, met_o = data$met_o)
+parovi %>%
+  filter(!is.na(met_o), !is.na(met_partnera)) %>%
+  mutate(met_partnera = if_else(met_partnera == 0, 2, met_partnera)) %>%
+  summarise(uporedivih_redova = n(),
+            poklapa_se = sum(met_o == met_partnera))
 ```
 
-Presek ove dve kolone potvrđuje našu pretpostavku, jer u 3.895 od ukupno 3.926 slučajeva gde je učesnik imao upisanu nulu, njegov partner je za isti taj sastanak zaokružio dvojku, odnosno da se ne poznaju. Što se tiče onih osam redova u kojima se javljaju brojevi od 3 do 8, za njih ne postoji nikakvo objašnjenje u dokumentaciji niti pravilo po talasima, pa ih tretiramo kao obične greške pri unosu i prebacujemo u NA.
+Poklapanje je potpuno u svim 7.993 uporedivim redovima, što znači da je nula zaista isto što i odgovor „ne". Za osam vrednosti od 3 do 8 nema objašnjenja u dokumentaciji, pa ih tretiramo kao greške pri unosu i prebacujemo u NA:
 
-Sada kolonu met možemo čisto da prekodiramo u faktor sa nivoima „Ne" i „Da":
-
-```{r}
+```{r met-prekodiranje}
 # 0 i 2 prebacujemo u Ne, 1 u Da, a greske (3-8) u NA
 sd <- sd %>%
   mutate(met = case_when(
@@ -404,25 +441,11 @@ sd %>%
   count(met)
 ```
 
-Nakon sređivanja vidimo da se u 7.644 slučaja partneri nisu poznavali od ranije, dok su se na 351 sastanku, što je oko 4% uzorka, osobe već znale. Broj nedostajućih vrednosti se povećao sa 375 na 383 upravo za onih osam obrisanih grešaka.
+Na 7.644 sastanka osobe se nisu poznavale, a na 351, odnosno oko 4% uzorka, jesu. Broj nedostajućih vrednosti porastao je sa 375 na 383 upravo za osam obrisanih grešaka.
 
 ## Vrednosti van dozvoljenog opsega
 
-Sledeći korak je provera da li se sve numeričke vrednosti nalaze u granicama skala koje propisuje upitnik. Ovde ne tražimo ekstremne vrednosti koje su realno moguće, već isključivo nemoguće unose poput ocene 0 ili 14 na skali koja ide od 1 do 10.
-
-Prvo izlistavamo minimum i maksimum za sve numeričke promenljive u našem skupu:
-
-```{r opseg-pregled}
-sd %>%
-  select(where(is.numeric), -iid, -pid, -wave, -dec) %>%
-  summarise(across(everything(), list(min = ~ min(.x, na.rm = TRUE),
-                                      max = ~ max(.x, na.rm = TRUE)))) %>%
-  pivot_longer(everything(),
-               names_to = c("kolona", ".value"),
-               names_pattern = "(.*)_(min|max)$")
-```
-
-Kod većine kolona granice su potpuno ispravne. Starost ide od 18 do 55 godina, poeni za preferencije su između 0 i 100, samoprocene su od 2 do 10, izlasci date i go_out su u rasponu od 1 do 7, dok je korelacija interesovanja int_corr uredno između -0,83 i 0,91. Međutim, kod dela kolona koje bi morale biti na skali od 1 do 10 vidimo nule ili brojeve veće od deset, pa ćemo izbrojati koliko tačno ima takvih odstupanja po kolonama:
+Sledeći korak je pronalaženje nemogućih unosa, poput ocene 0 ili 14 na skali od 1 do 10. Starost (18 do 55), poeni za preferencije (0 do 100), kolone date i go_out (1 do 7) i int_corr (-0,83 do 0,91) su u očekivanim granicama, pa brojimo odstupanja u kolonama koje moraju biti na skali od 1 do 10:
 
 ```{r opseg-brojanje}
 skala_1_10 <- c("attr", "sinc", "intel", "fun", "amb", "shar", "like", "prob",
@@ -435,19 +458,50 @@ van_opsega <- sd %>%
   pivot_longer(everything(), names_to = "kolona", values_to = "broj") %>%
   filter(broj > 0)
 
-van_opsega
-sum(van_opsega$broj)
+ocene_sa_sastanka <- c("attr", "sinc", "intel", "fun", "amb", "shar", "like", "prob")
+
+van_opsega %>%
+  mutate(grupa = if_else(kolona %in% ocene_sa_sastanka,
+                         "ocene sa sastanka", "uvodni upitnik")) %>%
+  group_by(grupa) %>%
+  summarise(kolona = n(), redova = sum(broj))
+
+# odgovori iz uvodnog upitnika ponavljaju se u svim redovima iste osobe
+uvodne_kolone <- setdiff(van_opsega$kolona, ocene_sa_sastanka)
+po_osobi_upitnik <- sd %>%
+  distinct(iid, .keep_all = TRUE) %>%
+  select(all_of(uvodne_kolone))
+greske_po_osobi <- rowSums(po_osobi_upitnik < 1 | po_osobi_upitnik > 10, na.rm = TRUE)
+
+c(ucesnika = sum(greske_po_osobi > 0), pogresnih_odgovora = sum(greske_po_osobi))
 ```
 
-Ukupno smo pronašli 515 pojedinačnih vrednosti koje iskaču van skale od 1 do 10, i one se mogu podeliti u tri grupe:
+Ukupno 515 polja je van skale, ali to nije 515 odvojenih grešaka. Od toga je 157 ocena sa sastanka, dok preostalih 358 polja potiče od samo 21 pogrešnog odgovora 15 učesnika u uvodnom upitniku, koji se ponavljaju u svim redovima te osobe. Tu spadaju nule kod interesovanja, gaming = 14 kod pet učesnika, reading = 13 kod tri učesnika i jedna nula u koloni imprace.
 
--   Prvu grupu čine nule u ocenama sa samog sastanka, najviše kod zajedničkih interesovanja shar u 59 redova i procene verovatnoće prob u 49 redova. Pošto na skali od 1 do 10 nula ne postoji, verovatno je pri unosu podataka prazno polje ponegde zabeleženo kao nula.
--   Drugu grupu čine odstupanja kod interesovanja iz uvodnog upitnika. Ovde pored pojedinačnih nula imamo i vrednosti veće od 10, i to gaming = 14 kod pet učesnika i reading = 13 kod tri učesnika.
--   Treći slučaj je jedan učesnik kome je u koloni imprace upisana nula.
+Kod ocena sa sastanka najviše je nula u kolonama shar (59) i prob (49), pa proveravamo šta bi one mogle da znače:
 
-Sve ove neispravne vrednosti prebacujemo u NA. Druga opcija bila bi da vrednosti poput 13 i 14 spustimo na gornju granicu skale, odnosno na 10, ali pošto ne znamo da li je učesnik zaista hteo da da desetku ili je u pitanju greška pri kucanju, poštenije je da ih tretiramo kao nedostajuće podatke. Naravno, te redove ne brišemo iz tabele jer sve ostale kolone u njima sadrže potpuno ispravne podatke sa sastanka.
+```{r opseg-nule}
+# procenat odgovora "da" kada je u koloni nula, ocena 1 ili prazno polje
+udeo_da_po_vrednosti <- function(kolona) {
+  x <- sd[[kolona]]
+  round(100 * c(nula = mean(sd$dec[x %in% 0]),
+                ocena_1 = mean(sd$dec[x %in% 1]),
+                prazno_polje = mean(sd$dec[is.na(x)])), 1)
+}
 
-```{r}
+rbind(prob = udeo_da_po_vrednosti("prob"),
+      shar = udeo_da_po_vrednosti("shar"))
+
+sd %>%
+  filter(shar == 0 | prob == 0) %>%
+  summarise(redova = n(), ucesnika = n_distinct(iid), talasa = n_distinct(wave))
+```
+
+Tabela prikazuje procenat odgovora „da" kada je u koloni nula, ocena 1 ili prazno polje. Kod kolone prob nula (14,3%) izgleda isto i kao ocena 1 (14,2%) i kao prazno polje (13,9%), pa ne možemo da razlikujemo šta je učesnik hteo da kaže. Kod kolone shar nula (18,6%) ne liči ni na jedno ni na drugo (6,3% i 32,9%). Nule nisu ni greška nekoliko ljudi, jer se javljaju kod 47 učesnika u 14 talasa.
+
+Pošto nula nema jedno jasno značenje, ne menjamo je u jedinicu, već sve vrednosti van skale prebacujemo u NA. Isto radimo i sa vrednostima 13 i 14, jer ne znamo da li je učesnik hteo da upiše desetku ili je pogrešio pri unosu. Ocene na pola boda, poput 6,5, nalaze se unutar skale i ostaju.
+
+```{r opseg-u-na}
 # sve vrednosti van skale 1-10 postavljamo na NA
 na_pre_opseg <- sum(is.na(sd[skala_1_10]))
 
@@ -455,15 +509,12 @@ sd <- sd %>%
   mutate(across(all_of(skala_1_10),
                 ~ if_else(.x < 1 | .x > 10, NA_real_, .x)))
 
-na_posle_opseg <- sum(is.na(sd[skala_1_10]))
-na_posle_opseg - na_pre_opseg
+sum(is.na(sd[skala_1_10])) - na_pre_opseg
 ```
-
-Vidimo da se ukupan broj NA vrednosti u ovim kolonama povećao za tačno 515, koliko smo i pronašli grešaka. Takođe, u nekim ocenama sa sastanka javljaju se vrednosti na pola boda poput 6,5 ili 7,5 jer su pojedini učesnici dopisivali međuvrednosti, ali pošto se one nalaze unutar dozvoljenog raspona od 1 do 10, njih normalno zadržavamo.
 
 ## Zbir preferencija
 
-U uvodnom upitniku učesnici su na prvo pitanje o tome šta traže kod partnera i drugo pitanje o tome šta misle da traži suprotni pol odgovarali tako što su raspoređivali ukupno 100 poena na šest osobina. Da bismo mogli ravnopravno da poredimo učesnike, zbir tih šest kolona kod svakog pojedinca mora da iznosi 100. Ovu proveru radimo na nivou učesnika uz toleranciju od jednog poena, zato što preračunate ocene iz talasa 6 do 9 zbog zaokruživanja nekada daju zbir od 99,98 ili 100,02:
+Na pitanjima 1 i 2 iz uvodnog upitnika učesnici su raspoređivali 100 poena na šest osobina, pa zbir kod svakog učesnika treba da bude 100. Proveravamo to uz toleranciju od jednog poena, jer preračunate ocene iz talasa 6 do 9 zbog zaokruživanja daju zbir poput 99,98 ili 100,02:
 
 ```{r zbir-provera}
 pref_1 <- c("attr1_1", "sinc1_1", "intel1_1", "fun1_1", "amb1_1", "shar1_1")
@@ -481,19 +532,19 @@ zbirovi %>%
     pitanje_1_nedostaje = sum(is.na(zbir_1)),
     pitanje_2_nedostaje = sum(is.na(zbir_2))
   )
-```
 
-Ispostavlja se da kod 9 učesnika na prvom pitanju i kod 19 učesnika na drugom pitanju zbir poena odstupa od stotke za više od jednog boda. Pogledajmo kako izgledaju ti redovi za prvo pitanje:
-
-```{r zbir-primeri}
 zbirovi %>%
   filter(abs(zbir_1 - 100) > 1) %>%
   select(iid, wave, all_of(pref_1), zbir_1)
 ```
 
-Iz tabele se lepo vidi kako su nastale ove greške. Na primer, učesnik sa brojem 427 je svakoj od šest osobina dao po 20 poena pa mu je zbir 120, iako je njegova namera očigledno bila da sve osobine oceni kao podjednako važne. Slično tome, nekome je zbir ispao 90 ili 95 jer je loše sabrao poene u glavi dok je popunjavao papir.
+Zbir odstupa za više od jednog poena kod 9 učesnika na prvom i 19 učesnika na drugom pitanju. Na primer, učesnik 427 je svakoj od šest osobina dao po 20 poena, pa mu je zbir 120, ali je poruka i dalje jasna: svih šest osobina smatra podjednako važnim.
 
-Umesto da brišemo ove ljude ili da njihove poene proglašavamo za NA, problem rešavamo jednostavnom normalizacijom, tako što poene svake pojedinačne osobine podelimo sa trenutnim zbirom tog učesnika i pomnožimo sa 100. Na taj način čuvamo tačan međusobni odnos osobina koji je učesnik želeo da iskaže i svodimo sve ispitanike na istu skalu od 0 do 100. Ovu korekciju radimo samo kod onih učesnika koji su upisali vrednosti za svih šest osobina, dok one kojima neko polje nedostaje ostavljamo za naredno poglavlje kako im ne bismo veštački naduvali preostale procente:
+Zato ove učesnike ne brišemo, već njihove poene preračunavamo tako da zbir bude 100. Poene svake osobine delimo ukupnim zbirom tog učesnika i množimo sa 100. Kod učesnika 427 svaka osobina dobija 20 / 120 × 100 = 16,67 poena, pa su sve i dalje jednake, a zbir je tačno 100. Isti račun primenjujemo na sve učesnike, čime uklanjamo i sitna odstupanja poput zbira 99,98.
+
+Jedan slučaj rešavamo pre preračunavanja. Učesnik 66 je ambicioznosti upisao 53 poena, što je najveća vrednost ove kolone u celom skupu (sledeća je 30), a zbir mu je 148. Ostalih pet osobina daje zbir 95, pa bi ambicioznost od 5 poena dala tačno 100, što ukazuje na grešku pri unosu jedne cifre. Preračunavanje bi ovde pogrešno od ambicioznosti napravilo najvažniju osobinu tog učesnika, pa vrednost 53 zamenjujemo sa 5. To je logička imputacija, jer vrednost izvodimo iz pravila da zbir mora biti 100. Ovo je jak pokazatelj, ali ne i apsolutni dokaz. Kod ostalih učesnika ne možemo da odredimo koje je polje pogrešno, pa njihove poene samo preračunavamo.
+
+Poene ne preračunavamo ni kod učesnika kojima nedostaje bar jedno od šest polja. Po sedam učesnika nije uopšte odgovorilo na svako od ova dva pitanja, a kod onih koji su pitanje popunili delimično (troje na prvom i jedna osoba na drugom pitanju) upisani poeni već daju zbir 100, pa preračunavanje nije potrebno:
 
 ```{r zbir-normalizacija}
 # pomocna funkcija za svodjenje zbira poena na 100
@@ -502,6 +553,10 @@ normalizuj <- function(df, kolone) {
   df %>%
     mutate(across(all_of(kolone), ~ if_else(is.na(zbir), .x, .x / zbir * 100)))
 }
+
+# ucesnik 66: 53 je greska pri unosu, ostalih pet osobina daje zbir 95
+sd <- sd %>%
+  mutate(amb1_1 = if_else(iid == 66, 5, amb1_1))
 
 sd <- sd %>%
   normalizuj(pref_1) %>%
@@ -515,48 +570,36 @@ sd %>%
             min_2 = min(zbir_2, na.rm = TRUE), max_2 = max(zbir_2, na.rm = TRUE))
 ```
 
-Nakon normalizacije, minimalni i maksimalni zbir poena na oba pitanja iznosi tačno 100 kod svih učesnika koji imaju kompletne odgovore, čime smo ujednačili skalu preferencija za dalju analizu.
+Posle normalizacije zbir poena je tačno 100 kod svih učesnika sa kompletnim odgovorima.
 
 ## Pregled izmena i čuvanje očišćenog skupa
 
-Sve provere i popravke koje smo uradili u ovom poglavlju možemo kratko da sumiramo u sledećoj tabeli:
-
 | Korak | Nalaz | Izmena |
 |------------------|------------------------------------|------------------|
-| Duplikati | Nema potpunih duplikata ni ponovljenih parova učesnik-partner, dok u 10 redova iz talasa 5 fali pid | Bez izmena |
+| Duplikati i parovi | Nema duplikata, parovi su usklađeni, u 10 redova fali pid, a u 136 redova samerace je upisan uz nepoznatu rasu | Bez izmena u tabeli, 136 redova izostavljamo iz testa H3 |
 | Tipovi promenljivih | 8 kolona sa šiframa kategorija pročitano je kao brojevi | Pretvorene u faktore sa nazivima iz dokumentacije |
-| Promenljiva `met` | Na polovini događaja odgovor „ne" je šifrovan nulom umesto dvojkom, uz 8 unosa van šifarnika | 0 i 2 prebačeni u „Ne", 1 u „Da", a 8 grešaka u NA |
-| Vrednosti van opsega | Pronađeno 515 vrednosti van skale od 1 do 10 u ocenama, interesovanjima i koloni imprace | Sve vrednosti van opsega prebačene u NA |
-| Zbir preferencija | Zbir poena odstupa od 100 kod 9 učesnika na prvom i 19 učesnika na drugom pitanju | Vrednosti proporcionalno normalizovane na zbir 100 |
+| Promenljiva `met` | Na delu događaja „ne" je šifrovano nulom, uz 8 unosa van šifarnika | 0 i 2 prebačeni u „Ne", 1 u „Da", a 8 grešaka u NA |
+| Vrednosti van opsega | 515 polja van skale: 157 ocena sa sastanka i 21 pogrešan odgovor 15 učesnika u upitniku | Sve vrednosti van opsega prebačene u NA |
+| Zbir preferencija | Zbir odstupa od 100 kod 9 učesnika na prvom i 19 na drugom pitanju | Vrednost 53 kod učesnika 66 ispravljena na 5, ostali poeni proporcionalno svedeni na zbir 100 |
 
-Bitno je naglasiti da tokom čišćenja nismo obrisali nijedan jedini red iz tabele, već smo samo neispravne unose prebacili u NA vrednosti kojima se bavimo u sledećem poglavlju. Sam proces popunjavanja nedostajućih vrednosti namerno ostavljamo tek za deveto poglavlje, nakon što tabelu podelimo na trening i test skup, kako informacije iz test skupa ne bi uticale na imputaciju.
-
-Pre nego što sačuvamo očišćenu tabelu, još jednom proveravamo njene dimenzije i strukturu:
-
-```{r ociscen-provera}
-dim(sd)
-
-glimpse(sd)
-```
-
-Tabela sd ima očekivanih 8.378 redova i 64 kolone sa ispravnim tipovima podataka, pa je čuvamo na disku u dva formata:
+Tokom čišćenja nismo obrisali nijedan red. Prazna polja popunjavamo tek u devetom poglavlju, nakon podele na trening i test skup, kako informacije iz test skupa ne bi uticale na imputaciju. Očišćena tabela ima 8.378 redova i 64 kolone, pa je čuvamo u dva formata:
 
 ```{r ociscen-cuvanje}
+dim(sd)
+
 dir.create("data/clean", showWarnings = FALSE, recursive = TRUE)
 
 saveRDS(sd, "data/clean/sd_clean.rds")
 write_excel_csv(sd, "data/clean/sd_clean.csv")
 ```
 
-Fajl sd_clean.rds čuva kompletnu R strukturu zajedno sa definisanim nivoima faktora pa ćemo njega učitavati u nastavku rada, dok sd_clean.csv služi kao čista tabela koja se lako otvara u bilo kom drugom programu.
+Fajl sd_clean.rds čuva i definisane nivoe faktora pa njega koristimo u nastavku rada, dok se sd_clean.csv lako otvara u drugim programima.
 
 # Nedostajuće vrednosti
 
-Nakon što smo izbacili nepotrebne kolone i sve neispravne unose pretvorili u NA, u ovom poglavlju detaljno analiziramo nedostajuće vrednosti u preostale 64 kolone našeg očišćenog skupa. Cilj nam je da utvrdimo koliko tačno podataka nedostaje, odakle potiču te praznine i da li samo odsustvo ocene nosi neku skrivenu informaciju o konačnoj odluci učesnika.
+Posle čišćenja u tabeli su ostala prazna polja. U ovom poglavlju utvrđujemo koliko ih ima, odakle potiču i da li sama činjenica da ocena nedostaje govori nešto o odluci.
 
 ## Koliko vrednosti nedostaje
-
-Za početak računamo procenat praznih polja u našem radnom skupu sd i prikazujemo prvih 15 kolona sa najviše nedostajućih vrednosti na grafiku:
 
 ```{r na-ociscen}
 na_sd <- sd %>%
@@ -565,33 +608,23 @@ na_sd <- sd %>%
   filter(procenat_na > 0) %>%
   arrange(desc(procenat_na))
 
-nrow(na_sd)
+c(kolona_sa_na = nrow(na_sd), do_2_procenta = sum(na_sd$procenat_na <= 2))
+head(na_sd, 5)
 
-na_sd %>%
-  slice_head(n = 15) %>%
-  ggplot(aes(x = reorder(kolona, procenat_na), y = procenat_na)) +
-  geom_col(fill = "steelblue") +
-  coord_flip() +
-  labs(title = "Kolone sa najviše nedostajućih vrednosti",
-       x = NULL, y = "Procenat nedostajućih vrednosti")
+kompletan <- complete.cases(sd)
+c(kompletnih_redova = sum(kompletan), procenat = round(100 * mean(kompletan), 1))
+
+# procenat odgovora "da" u nekompletnim (FALSE) i kompletnim (TRUE) redovima
+round(100 * tapply(sd$dec, kompletan, mean), 1)
 ```
 
-Vidimo da se bar jedno prazno polje javlja u 57 od 64 kolone, ali je kod velike većine promenljivih taj procenat veoma mali i kreće se oko 1% do 2%. Na samom vrhu nalaze se ocene sa sastanka, i to zajednička interesovanja shar sa 13,4% nedostajućih vrednosti, ambicioznost amb sa 8,6%, prethodno poznanstvo met sa 4,6%, kao i zabavnost fun i procena verovatnoće prob sa po 4,3%.
+U 57 od 64 kolone nedostaje bar jedna vrednost, ali je u 47 tih kolona prazno najviše 2% redova. Najviše nedostaju ocene sa sastanka, pre svega zajednička interesovanja shar (13,4%) i ambicioznost amb (8,6%). Kod kolone shar procenat je porastao sa 12,7% iz drugog poglavlja jer smo u trećem poglavlju 59 nula prebacili u NA.
 
-Ovde može da se primeti da je procenat praznih polja za kolonu shar porastao sa 12,7% iz drugog poglavlja na sadašnjih 13,4%. Ta razlika potiče direktno od onih 59 nula koje smo u prethodnom poglavlju tokom čišćenja skale prebacili u NA, a slična stvar važi i za kolonu prob.
-
-Iako nijedna pojedinačna kolona nema previše praznih polja, interesantno je proveriti u koliko redova tabele ne nedostaje apsolutno nijedan podatak:
-
-```{r na-potpuni-redovi}
-sum(complete.cases(sd))
-mean(complete.cases(sd))
-```
-
-Kompletno popunjene podatke u svim kolonama ima 6.240 od ukupno 8.378 redova, odnosno oko 74,5% skupa. To znači da bismo prostim brisanjem svakog reda u kom fali makar jedna cifra izgubili čitavu četvrtinu sastanaka, što nikako ne želimo da uradimo.
+Potpuno je popunjeno 6.240 od 8.378 redova (74,5%). Brisanjem ostalih izgubili bismo četvrtinu podataka. Ti redovi nisu ni slučajan uzorak, jer je u njima odgovor „da" zabeležen u 38,2% slučajeva, a u kompletnim redovima u 43,3%, pa bi se udeo odgovora „da" u tabeli veštački povećao sa 42,0% na 43,3%.
 
 ## Odakle potiču nedostajuće vrednosti
 
-Kod demografskih kolona i preferencija iz uvodnog upitnika vrednosti se ponavljaju kroz sve sastanke iste osobe, pa praznine u tom delu tabele proveravamo na nivou pojedinačnih učesnika:
+Prazna polja imaju dva izvora. Prvi je uvodni upitnik, čije se vrednosti ponavljaju u svim redovima iste osobe, pa ih brojimo po učesniku:
 
 ```{r na-po-ucesniku}
 sd %>%
@@ -604,66 +637,89 @@ sd %>%
   )
 ```
 
-Ispostavlja se da prazna polja u uvodnom upitniku potiču od veoma malog broja ljudi. Imamo šest učesnika koji izgleda uopšte nisu predali uvodni obrazac jer im nedostaju i starost i interesovanja i preferencije, uz još par pojedinaca koji su preskočili samo po neko pitanje.
+Šest od 551 učesnika verovatno nije predalo uvodni upitnik, jer im nedostaju i starost i preferencije i interesovanja, a još nekoliko ljudi preskočilo je pojedina pitanja.
 
-S druge strane, kod ocena sa samih sastanaka zanimljivo je proveriti da li prazna polja u najpraznijoj koloni shar nastaju tako što većina učesnika ponekad zaboravi da upiše ocenu, ili postoje ljudi koji to pitanje redovno preskaču:
+Drugi izvor su ocene sa sastanka. Zato za svaki red brojimo koliko je od osam ocena ostalo prazno i koliko često se takvi sastanci završavaju odgovorom „da":
 
-```{r na-shar-po-ucesniku}
-sd %>%
-  group_by(iid) %>%
-  summarise(udeo_na = mean(is.na(shar))) %>%
-  summarise(
-    preskocili_bar_jednom = sum(udeo_na > 0),
-    preskocili_vise_od_polovine = sum(udeo_na > 0.5)
-  )
+```{r na-broj-praznih}
+prazno_po_redu <- rowSums(is.na(sd[ocene_sa_sastanka]))
+
+tibble(praznih = prazno_po_redu, dec = sd$dec) %>%
+  mutate(grupa = case_when(praznih == 0 ~ "0",
+                           praznih <= 3 ~ "1-3",
+                           praznih <= 7 ~ "4-7",
+                           TRUE         ~ "8 (ceo obrazac)")) %>%
+  group_by(grupa) %>%
+  summarise(redova = n(), udeo_da = round(100 * mean(dec), 1))
+
+prazni_obrasci <- sd %>%
+  filter(prazno_po_redu == 8)
+
+c(redova = nrow(prazni_obrasci),
+  potpuno_praznih = sum(rowSums(is.na(data[ocene_sa_sastanka])) == 8),
+  ucesnika = n_distinct(prazni_obrasci$iid),
+  odgovora_da = sum(prazni_obrasci$dec),
+  na_tri_najcesca_talasa = sum(head(sort(table(prazni_obrasci$wave), decreasing = TRUE), 3)))
+
+# procenat "da" istih ucesnika na sastancima na kojima su popunili bar neku ocenu
+round(100 * mean(sd$dec[sd$iid %in% prazni_obrasci$iid & prazno_po_redu < 8]), 1)
 ```
 
-Rezultat pokazuje da važi i jedno i drugo. Ukupno 227 učesnika je bar na jednom sastanku ostavilo polje shar prazno, ali među njima imamo i 46 učesnika koji ovu osobinu nisu ocenili na više od polovine svojih sastanaka.
+Kada nedostaje jedna do tri ocene, udeo odgovora „da" je nešto niži nego kod potpuno popunjenih obrazaca (40,6% prema 43,5%), a pada na 25,4% u 59 redova sa četiri do sedam praznih ocena. Posebno se izdvaja 189 redova bez ijedne važeće ocene, koje dalje zovemo praznim obrascima. Od toga je 186 potpuno praznih, a u tri reda su upisane samo nevažeće vrednosti. U ovim redovima „da" je zabeleženo samo 4 puta (2,1%). Oni potiču od 106 učesnika, koji su na ostalim sastancima rekli „da" u 41,6% slučajeva, a 154 ovakva reda nalaze se na samo tri događaja (14, 15 i 21). Iz podataka ne možemo da znamo da li su ti učesnici svesno izabrali „ne" i odustali od ocenjivanja ili je obrazac ostao nepopunjen iz nekog drugog razloga.
 
 ## Da li je nedostajanje povezano sa odlukom
 
-Pre nego što popunimo prazna polja u ocenama sa sastanka, moramo da se zapitamo zašto bi neko uopšte preskočio da oceni partnera. Logična pretpostavka je da učesnik koji već nakon prvog minuta vidi da mu se osoba preko puta uopšte ne dopada, na kraju razgovora samo zaokruži „ne" i ne trudi se da popuni svih osam skala do kraja. Ako je to tačno, onda sama činjenica da je neko polje ostalo prazno sugeriše negativnu odluku. Zato poredimo procenat potvrdnih odgovora u redovima gde ocena postoji i u redovima gde ona nedostaje:
-
-```{r na-udeo-da}
-sd %>%
-  select(dec, shar, amb, fun, prob) %>%
-  pivot_longer(-dec, names_to = "ocena", values_to = "vrednost") %>%
-  group_by(ocena, nedostaje = is.na(vrednost)) %>%
-  summarise(udeo_da = round(mean(dec), 3), broj = n(), .groups = "drop")
-```
-
-Razlike u tabeli su prilično uočljive, pa pomoću hi-kvadrat testa nezavisnosti na nivou značajnosti α = 0,05 proveravamo sledeće hipoteze:
-
--   H0: Odsustvo ocene i konačna odluka učesnika su međusobno nezavisni.
--   H1: Odsustvo ocene i konačna odluka učesnika su statistički povezani.
+Za četiri ocene sa najviše praznih polja proveravamo hipoteze H0: nedostajanje ocene i odluka su nezavisni, i H1: nedostajanje ocene i odluka su povezani. Nule i druge nevažeće vrednosti ovde ne računamo kao preskočene ocene, jer ne znamo šta znače. Hi-kvadrat test radimo prvo na svim redovima, a zatim bez 189 praznih obrazaca. Pošto jedna osoba ima više redova, svakog učesnika poredimo i sa njim samim, pomoću uparenog Vilkoksonovog testa:
 
 ```{r na-test-odluka}
-sapply(c("shar", "amb", "fun", "prob"), function(kolona) {
-  chisq.test(table(is.na(sd[[kolona]]), sd$dec))$p.value
-})
+proveri_nedostajanje <- function(kolona) {
+  # nevazece vrednosti (npr. nule) nisu preskocene ocene, pa ih ovde izostavljamo
+  nevazeca <- !is.na(data[[kolona]]) & is.na(sd[[kolona]])
+  svi <- sd[!nevazeca, ]
+  podaci <- sd[!nevazeca & prazno_po_redu < 8, ]
+  fali <- is.na(podaci[[kolona]])
+
+  po_osobi <- podaci %>%
+    mutate(fali = is.na(.data[[kolona]])) %>%
+    group_by(iid, fali) %>%
+    summarise(udeo_da = mean(dec), .groups = "drop") %>%
+    pivot_wider(names_from = fali, names_prefix = "fali_", values_from = udeo_da) %>%
+    drop_na()
+
+  tibble(kolona = kolona,
+         p_svi = chisq.test(table(is.na(svi[[kolona]]), svi$dec))$p.value,
+         da_ima = 100 * mean(podaci$dec[!fali]),
+         da_fali = 100 * mean(podaci$dec[fali]),
+         p_bez = chisq.test(table(fali, podaci$dec))$p.value,
+         ucesnika = nrow(po_osobi),
+         razlika = 100 * mean(po_osobi$fali_TRUE - po_osobi$fali_FALSE),
+         p_osoba = wilcox.test(po_osobi$fali_TRUE, po_osobi$fali_FALSE,
+                               paired = TRUE)$p.value)
+}
+
+map_dfr(c("shar", "amb", "fun", "prob"), proveri_nedostajanje) %>%
+  mutate(across(c(da_ima, da_fali, razlika), ~ round(.x, 1)),
+         across(starts_with("p_"), ~ format.pval(.x, digits = 2, eps = 0.001))) %>%
+  knitr::kable(col.names = c("Ocena", "p, svi redovi", "% da, ocena postoji",
+                             "% da, ocena fali", "p, bez praznih obrazaca",
+                             "Učesnika", "Razlika po osobi", "p po osobi"))
 ```
 
-Kod sve četiri posmatrane kolone p-vrednost je daleko manja od 0,001, što znači da možemo da odbacimo nultu hipotezu. Učesnici zaista mnogo ređe kažu „da" na sastancima gde su preskočili neku od ovih ocena. Dok je na sastancima sa uredno upisanim ocenama udeo potvrdnih odgovora oko 43%, u redovima gde fali ocena za shar on pada na 32,1%, kada fali fun pada na svega 19,2%, a kada učesnik nije upisao koliku šansu daje poklapanju u koloni prob, rekao je „da" u samo 14% slučajeva.
+Na svim redovima p-vrednost je kod sve četiri kolone manja od 0,001, ali je to velikim delom posledica praznih obrazaca. Kada njih izuzmemo, jasna veza ostaje samo kod shar: isti učesnici kažu „da" za 12,5 poena ređe kada ovu ocenu preskoče (p < 0,001). Kod amb i fun nema značajne veze ni na nivou redova ni po osobi. Kod prob je razlika na nivou redova značajna (31,7% prema 43,2%, p = 0,013), ali nestaje kada svaku osobu poredimo sa njom samom (razlika od +1,4 poena, p = 0,85). To ukazuje da ovu ocenu češće preskaču ljudi koji generalno ređe kažu „da", a ne da pojedinac preskače ocenu kod partnera kog odbija.
 
-Iz ovoga se jasno vidi da prazna polja u ocenama nisu nastala potpuno slučajno (nisu MCAR), već da učesnici znatno češće preskaču ocenjivanje onda kada im se partner ne dopadne. Ovakvo ponašanje odgovara MNAR mehanizmu, jer ocena verovatno fali upravo zato što bi bila niska. Strogo gledano, to iz samih podataka ne možemo da dokažemo, a pošto je odluka dec uvek poznata, nedostajanje je delom objašnjivo poznatim podacima, što odgovara i MAR mehanizmu. Za dalji rad je bitno ono što sigurno znamo: nedostajanje nije slučajno i nosi informaciju o odluci.
+Nedostajanje dakle nije potpuno slučajno, pa odbacujemo mehanizam MCAR (missing completely at random). Iz samih podataka ne možemo da razlikujemo mehanizam MAR, gde nedostajanje zavisi od podataka koje vidimo, poput odluke, i MNAR, gde ocena fali zato što bi sama bila niska, jer prave vrednosti praznih polja nikada ne vidimo. Zato ne tvrdimo zašto je neko preskočio ocenu, već samo da nedostajanje, a pre svega prazan obrazac, nosi informaciju o odluci.
 
 ## Odluka o obradi
 
-Na osnovu svega što smo ovde utvrdili, obradu nedostajućih vrednosti postavljamo kroz tri koraka:
-
-1.  Prvo, ne brišemo redove sa praznim poljima. Osim što bismo tako bacili četvrtinu podataka, izbacili bismo nesrazmerno mnogo sastanaka sa odlukom „ne" i time pokvarili prirodni balans klasa u uzorku.
-2.  Drugo, prazna polja popunjavamo tek u devetom poglavlju nakon podele na trening i test skup. Numeričke kolone ćemo imputirati medijanom, a faktorske najčešćom kategorijom izračunatom isključivo na trening podacima, dok ćemo u desetom poglavlju isprobati i regresionu imputaciju.
-3.  Treće, pošto smo upravo dokazali da samo odsustvo ocene sa sastanka nosi bitan signal za predviđanje odluke, u osmom poglavlju ćemo pre imputacije napraviti novu promenljivu broj_na_ocena koja broji koliko je ocena učesnik preskočio na datom sastanku.
+Redove sa praznim poljima ne brišemo, uključujući i prazne obrasce, jer svi imaju zabeleženu odluku. Popunjavamo ih tek u devetom poglavlju, posle podele na trening i test skup: numeričke kolone medijanom, a faktorske najčešćom kategorijom, izračunatim samo na trening podacima, dok u desetom poglavlju isprobavamo i regresionu imputaciju. Pošto imputacija briše informaciju o tome šta je nedostajalo, u osmom poglavlju pre nje pravimo promenljivu broj_na_ocena, koja beleži koliko je ocena preskočeno na sastanku.
 
 # Ekstremne vrednosti
 
-Za razliku od grešaka pri unosu koje smo očistili u trećem poglavlju jer su bile van dozvoljenog opsega skale, ekstremne vrednosti, odnosno autlajeri, predstavljaju podatke koji su realno mogući, ali znatno odskaču od ostatka uzorka. Takve tačke mogu da povuku prosek ili da utiču na koeficijente modela, ali ih ne treba slepo brisati ako iza njih stoje stvarni učesnici i njihovi iskreni odgovori.
-
-Većina numeričkih kolona u našem skupu nalazi se na strogo ograničenim skalama od 1 do 10 ili od 0 do 100 poena. Ipak, čak i na takvim zatvorenim skalama standardno pravilo interkvartilnog raspona može da označi određene odgovore kao ekstremne ukoliko se većina učesnika grupisala u uskom pojasu ocena. Zato ćemo prvo detaljno ispitati starost učesnika kao jedinu pravu otvorenu skalu, a zatim ćemo proveriti i sve ostale numeričke kolone.
+Ekstremne vrednosti (autlajeri) su, za razliku od grešaka iz trećeg poglavlja, realno moguće vrednosti koje znatno odskaču od ostatka uzorka. Zato ih ne brišemo automatski, već proveravamo da li su stvarne i da li utiču na rezultate. Pronalazimo ih pravilom interkvartilnog raspona (IQR): ekstremne su vrednosti manje od Q1 - 1,5 \* IQR ili veće od Q3 + 1,5 \* IQR, gde su Q1 i Q3 granice srednjih 50% podataka, a IQR = Q3 - Q1.
 
 ## Starost učesnika
 
-Pošto je starost osobina samog ispitanika, analiziramo je na nivou od 551 jedinstvenog učesnika kako osobe sa većih događaja ne bi bile prebrojane više puta:
+Starost je jedina osobina učesnika bez unapred zadate skale. Pošto se odnosi na osobu, a ne na sastanak, analiziramo je na nivou od 551 učesnika:
 
 ```{r starost-pregled}
 ucesnici <- sd %>%
@@ -676,11 +732,9 @@ ggplot(ucesnici, aes(x = gender, y = age, fill = gender)) +
   labs(title = "Starost učesnika po polu", x = NULL, y = "Starost (godine)")
 ```
 
-Iz osnovnih statistika i sa boxplot grafika vidimo da polovina svih učesnika ima između 24 i 28 godina, uz medijanu od 26 godina. Iznad gornjeg brka na grafiku uočavamo nekoliko starijih ispitanika kod oba pola, među kojima najviše odskače jedna učesnica od 55 godina.
+Polovina učesnika ima između 24 i 28 godina, uz medijanu od 26 godina. Iznad gornjeg brka na grafiku vidimo nekoliko starijih ispitanika oba pola, među kojima najviše odskače jedna učesnica od 55 godina.
 
-Da bismo precizno izdvojili ove tačke, primenjujemo pravilo interkvartilnog raspona po kom se ekstremnim smatraju sve vrednosti manje od Q1 - 1,5 \* IQR ili veće od Q3 + 1,5 \* IQR:
-
-```{r}
+```{r starost-iqr}
 # IQR granice za starost ucesnika
 q1 <- quantile(ucesnici$age, 0.25, na.rm = TRUE)
 q3 <- quantile(ucesnici$age, 0.75, na.rm = TRUE)
@@ -698,20 +752,33 @@ izvan <- ucesnici %>%
 
 izvan
 
-sd %>%
-  filter(iid %in% izvan$iid) %>%
-  nrow()
+# redovi u kojima ove osobe odlucuju, u kojima su partneri i ukupno
+odlucuje <- sd$iid %in% izvan$iid
+partner_star <- sd$pid %in% izvan$iid
+
+c(odlucuje = sum(odlucuje), partner = sum(partner_star),
+  ukupno = sum(odlucuje | partner_star))
+
+# procenat odgovora "da" u tim redovima i u ostalim redovima
+round(100 * c(odlucuje = mean(sd$dec[odlucuje]),
+              partner = mean(sd$dec[partner_star]),
+              ostali = mean(sd$dec[!odlucuje & !partner_star])), 1)
+
+# dodatna provera pomocu z-vrednosti
+zskor_age <- (ucesnici$age - mean(ucesnici$age, na.rm = TRUE)) /
+  sd(ucesnici$age, na.rm = TRUE)
+sort(ucesnici$age[which(abs(zskor_age) > 3)])
 ```
 
-Pošto je interkvartilni raspon veoma uzak i iznosi svega 4 godine, granice normalnog raspona ispadaju od 18 do 34 godine. Ispod donje granice nema nikoga, dok iznad 34 godine imamo 13 učesnika, tačnije osam žena i pet muškaraca starosti od 35 do 55 godina, koji su zajedno učestvovali na 173 sastanka.
+Interkvartilni raspon iznosi 4 godine, pa su granice 18 i 34 godine. Ispod donje granice nema nikoga, a iznad gornje je 13 učesnika (osam žena i pet muškaraca) starosti od 35 do 55 godina. Oni se pojavljuju u 342 od 8.378 redova: u 173 reda donose odluku, u 173 su partneri, a u četiri reda su obe osobe iz ove grupe.
 
-Ove učesnike svakako zadržavamo u skupu podataka. Iako većinu postdiplomaca čine ljudi u srednjim dvadesetim godinama, potpuno je normalno da na doktorskim ili master studijama ima i ljudi u tridesetim, četrdesetim ili pedesetim godinama, tako da ovde nije reč o grešci. Njihovim brisanjem izgubili bismo 173 sastanka i ujedno bismo uskratili modelu priliku da nauči kako mlađi učesnici reaguju kada preko puta njih sedne znatno stariji partner. Sam uticaj ovih ekstremnih godina ublažićemo u osmom poglavlju uvođenjem razlike u godinama između partnera.
+Ove učesnike zadržavamo, jer starost od 35 do 55 godina nije neobična na master i doktorskim studijama, pa nema razloga da je smatramo greškom. Oni nose i korisnu informaciju: kada odlučuju, kažu „da" u 52,6% slučajeva, a kada su partneri, dobijaju „da" u 29,5% slučajeva, naspram 42,0% u ostalim redovima.
 
-Kao dodatnu proveru primenili smo i kriterijum z-vrednosti (\|z\| \> 3), koji kao ekstremne izdvaja samo 4 najstarija učesnika sa 38, 39, 42 i 55 godina. Ovaj kriterijum se oslanja na prosek i standardnu devijaciju, koje i sami stariji učesnici podižu, a pretpostavlja i normalnu raspodelu, dok starost u našem skupu ima dugačak desni rep. Zato se u radu oslanjamo na IQR pravilo, a zaključak u oba slučaja ostaje isti.
+Pravilo z-vrednosti (\|z\| \> 3) izdvaja samo četiri najstarija učesnika (38, 39, 42 i 55 godina), ali se oslanja na prosek i standardnu devijaciju, koje podižu upravo stariji učesnici, i pretpostavlja normalnu raspodelu, dok starost ima dugačak desni rep. Zato koristimo IQR pravilo. U desetom poglavlju proveravamo i da rezultat modela ne zavisi od ovih učesnika.
 
 ## Ostale numeričke kolone
 
-Sada pravilo interkvartilnog raspona primenjujemo i na sve preostale numeričke kolone u skupu, pri čemu promenljive iz uvodnog upitnika ponovo gledamo na nivou učesnika, a ocene sa sastanaka na nivou pojedinačnog reda:
+Isto pravilo primenjujemo na ostale numeričke kolone, pri čemu odgovore iz uvodnog upitnika gledamo po učesniku, a ocene sa sastanka po redu:
 
 ```{r ostale-ekstremne}
 iqr_van <- function(x) {
@@ -720,12 +787,12 @@ iqr_van <- function(x) {
   sum(x < q[1] - 1.5 * i | x > q[2] + 1.5 * i, na.rm = TRUE)
 }
 
-po_ucesniku <- c("imprace", "imprelig", "date", "go_out",
+po_ucesniku <- c("imprace", "imprelig", "exphappy", "date", "go_out",
                  interesovanja, preferencije)
 po_redu <- c("attr", "sinc", "intel", "fun", "amb", "shar",
              "like", "prob", "int_corr", "order")
 
-bind_rows(
+van_iqr <- bind_rows(
   ucesnici %>%
     summarise(across(all_of(po_ucesniku), iqr_van)) %>%
     pivot_longer(everything(), names_to = "kolona", values_to = "izvan") %>%
@@ -737,9 +804,21 @@ bind_rows(
 ) %>%
   filter(izvan > 0) %>%
   arrange(desc(izvan))
+
+nrow(van_iqr)
+head(van_iqr, 5)
+
+# procenat odgovora "da" kada je ocena ispod donje IQR granice
+sapply(c("amb", "sinc", "like", "intel"), function(kolona) {
+  x <- sd[[kolona]]
+  q <- quantile(x, c(0.25, 0.75), na.rm = TRUE)
+  round(100 * mean(sd$dec[which(x < q[1] - 1.5 * (q[2] - q[1]))]), 1)
+})
 ```
 
-Iako funkcija pronalazi tačke van IQR granica u 29 kolona, treba imati u vidu da su sve te vrednosti prethodno već očišćene i da se nalaze unutar dozvoljenih skala od 1 do 10 ili od 0 do 100. Razlog zašto ih formula uopšte hvata jeste to što su ljudi kod nekih pitanja davali veoma ujednačene odgovore. Tako recimo većina studenata za čitanje ili iskrenost daje visoke ocene od 7 do 9, pa interkvartilni raspon postane toliko uzak da svaka ocena 1, 2 ili 3 automatski ispadne ispod donje granice. Slično važi i kada neko privlačnosti u uvodnom upitniku dodeli 50 ili 100 poena dok većina daje oko 20. Takve tačke naravno nisu nikakve anomalije koje treba brisati, već upravo one razlike u ukusima i utiscima na osnovu kojih model i treba da predvidi odluku.
+Pravilo označava vrednosti u 29 kolona, ali su sve one unutar dozvoljenih granica svojih skala. Označene su zato što su ljudi na pojedinim pitanjima davali slične odgovore, pa je IQR uzak. Kod interesovanja za čitanje srednjih 50% učesnika daje ocene od 7 do 9, pa donja granica iznosi 4 i svaka ocena 1, 2 ili 3 postaje „ekstremna". Slično tome, privlačnosti u uvodnom upitniku većina daje oko 20 poena, pa svaka vrednost iznad 40 ispada iz opsega, iako je potpuno legitimna.
+
+Ove vrednosti ne brišemo jer upravo one nose informaciju. Kada učesnik partneru da neuobičajeno nisku ocenu, odluka je skoro uvek „ne": odgovor „da" dat je u 13,3% takvih sastanaka kod ambicioznosti, 11,5% kod iskrenosti, 1,8% kod opšteg utiska like i ni na jednom kod inteligencije, naspram oko 43% na ostalim sastancima.
 
 # Eksplorativna analiza podataka
 
@@ -884,7 +963,7 @@ sd %>%
   summarise(udeo_da = round(mean(dec), 3), broj = n(), .groups = "drop")
 ```
 
-Kod promenljive samerace vidimo da učesnici daju potvrdan odgovor u 43,4% slučajeva kada je partner iste rase, u poređenju sa 41,1% kada nije. Razlika postoji u smeru koji predviđa hipoteza H3, ali iznosi jedva nešto više od 2 procentna poena. Kod veličine događaja primećujemo da su na manjim događajima od 5 do 10 sastanaka ljudi bili nešto manje izbirljivi pa su rekli „da" u 46% slučajeva, naspram 41,2% na velikim događajima gde su imali veći izbor. Konačno, ubedljivo najveći skok vidimo kod kolone met, gde poznanicima učesnici kažu „da" u čak 60,7% slučajeva, ali pošto takvi susreti čine svega 4% tabele, ova kolona neće moći previše da pomogne modelu na nivou celog skupa.
+Kod promenljive samerace vidimo da učesnici daju potvrdan odgovor u 43,4% slučajeva kada je partner iste rase, u poređenju sa 41,1% kada nije. Razlika postoji u smeru koji predviđa hipoteza H3 i na nivou svih redova iznosi nešto više od 2 procentna poena, a u sedmom poglavlju je proveravamo i poređenjem svake osobe sa samom sobom. Kod veličine događaja primećujemo da su na manjim događajima od 5 do 10 sastanaka ljudi bili nešto manje izbirljivi pa su rekli „da" u 46% slučajeva, naspram 41,2% na velikim događajima gde su imali veći izbor. Konačno, ubedljivo najveći skok vidimo kod kolone met, gde poznanicima učesnici kažu „da" u čak 60,7% slučajeva, ali pošto takvi susreti čine svega 4% tabele, ova kolona neće moći previše da pomogne modelu na nivou celog skupa.
 
 ### Razlika u godinama
 
@@ -966,14 +1045,14 @@ ucesnici %>%
        x = NULL, y = "Prosečan broj poena", fill = NULL)
 ```
 
-Grafik pokazuje zanimljiv kontrast između polova u početnim izjavama. Muškarci već u upitniku otvoreno stavljaju privlačnost na prvo mesto sa prosečno 27 poena, dok su im inteligencija sa 19,4, zabavnost sa 17,6 i iskrenost sa 16,3 poena u drugom planu. Žene, međutim, u anketi tvrde da im je najvažnija inteligencija kojoj daju 21 poen, zatim iskrenost sa 18,2 poena, pa tek onda privlačnost sa 18 i zabavnost sa 17,3 poena. Kada to uporedimo sa prethodnim graficima gde smo videli da u praksi i kod žena privlačnost i zabavnost ubedljivo najjače vuku ka odluci „da", dok inteligencija i iskrenost igraju sporednu ulogu, dobijamo odličnu osnovu za testiranje četvrte hipoteze.
+Grafik pokazuje zanimljiv kontrast između polova u početnim izjavama. Muškarci već u upitniku otvoreno stavljaju privlačnost na prvo mesto sa prosečno 27 poena, dok su im inteligencija sa 19,4, zabavnost sa 17,6 i iskrenost sa 16,4 poena u drugom planu. Žene, međutim, u anketi tvrde da im je najvažnija inteligencija kojoj daju 21 poen, zatim iskrenost sa 18,2 poena, pa tek onda privlačnost sa 18 i zabavnost sa 17,3 poena. Kada to uporedimo sa prethodnim graficima gde smo videli da u praksi i kod žena privlačnost i zabavnost ubedljivo najjače vuku ka odluci „da", dok inteligencija i iskrenost igraju sporednu ulogu, dobijamo odličnu osnovu za testiranje četvrte hipoteze.
 
 ## Zaključak eksplorativne analize
 
 -   Ciljna promenljiva ima umeren disbalans od 42% potvrdnih prema 58% odričnih odgovora, pa ćemo modele pored obične tačnosti ocenjivati pomoću F1 mere i ROC AUC skorova.
 -   Muškarci znatno češće govore „da" nego žene (47,4% naspram 36,5%), a kriva potvrdnih odgovora u zavisnosti od ocene privlačnosti partnera kod muškaraca raste strmije nego kod žena.
 -   Na odluku sa sastanka najviše utiču opšti utisak like, privlačnost, zabavnost i zajednička interesovanja, dok inteligencija, iskrenost i ambicioznost veoma slabo razdvajaju klase.
--   Ista rasa i manja razlika u godinama u našem uzorku pokazuju sasvim blagu vezu sa pozitivnom odlukom.
+-   Ista rasa i manja razlika u godinama na nivou svih redova pokazuju blagu vezu sa pozitivnom odlukom, a uticaj rase detaljnije proveravamo u sedmom poglavlju.
 -   Ocene sa sastanka su umereno do jako međusobno korelisane, o čemu ćemo voditi računa prilikom konstrukcije i tumačenja linearnih modela.
 -   Postoji očigledan raskorak između osobina kojima učesnici daju najviše poena u uvodnom upitniku i onih osobina koje zaista presuđuju na četvorominutnom sastanku, što je posebno izraženo kod žena.
 
@@ -987,7 +1066,7 @@ Pored same p-vrednosti, uz svaki test obavezno računamo i odgovarajuću meru ve
 
 Pre izvođenja testova važno je podsetiti se da standardni statistički testovi pretpostavljaju da su sva opažanja u uzorku međusobno nezavisna. Kao što smo objasnili u drugom poglavlju, u našoj tabeli se svaki učesnik pojavljuje u 5 do 22 reda, pa odluke koje je donela ista osoba tokom večeri nisu potpuno nezavisne jedna od druge. Posledica toga je da testovi sprovedeni nad svih 8.378 redova vide veći efektivni uzorak nego što zaista imamo jedinstvenih ljudi, pa daju nešto niže p-vrednosti. Da bismo izbegli pogrešne zaključke, ovaj problem rešavamo na tri načina:
 
-1.  kod prve hipoteze test izvodimo i na nivou cele tabele i na nivou od 551 pojedinačnog učesnika gde su opažanja potpuno nezavisna;
+1.  kod prve hipoteze i kod uticaja iste rase test izvodimo i na nivou cele tabele i na nivou pojedinačnih učesnika;
 2.  kod svih testova zaključak ne donosimo samo na osnovu p-vrednosti, već gledamo izračunatu veličinu efekta na koju broj ponavljanja ne utiče;
 3.  svaki rezultat kod kog je p-vrednost blizu graničnih 0,05 uz zanemarljiv efekat tumačimo sa oprezom.
 
@@ -1076,13 +1155,42 @@ Prvi deo hipoteze: Ista rasa partnera.
 -   H1: Udeo potvrdnih odgovora zavisi od toga da li su učesnik i partner iste rase.
 
 ```{r h3-rasa}
-test_h3_rasa <- chisq.test(table(sd$samerace, sd$dec))
+# 136 redova sa nepoznatom rasom ne ulazi u test (videti trece poglavlje)
+sd_rasa <- sd %>%
+  filter(!is.na(race), !is.na(race_o))
+
+test_h3_rasa <- chisq.test(table(sd_rasa$samerace, sd_rasa$dec))
 test_h3_rasa
 
-round(prop.table(table(sd$samerace, sd$dec), margin = 1) * 100, 1)
+round(prop.table(table(sd_rasa$samerace, sd_rasa$dec), margin = 1) * 100, 1)
 ```
 
-Hi-kvadrat test daje statistiku 4,35 uz p-vrednost od 0,037, što je tek za nijansu ispod našeg praga od 0,05. Međutim, kada pogledamo same procente, učesnici kažu „da" u 43,4% sastanaka sa osobom iste rase i u 41,1% sa osobom druge rase, što je razlika od svega oko 2 procentna poena. Ako se setimo da su p-vrednosti na nivou svih redova blago preuveličane zbog ponovljenih merenja po učesniku, jasno je da razlika između 43,4% i 41,1% u praksi ne igra nikakvu ulogu.
+Hi-kvadrat test na 8.242 reda sa poznatom rasom oba učesnika daje statistiku 4,55 uz p-vrednost od 0,033. Učesnici kažu „da" u 43,4% sastanaka sa osobom iste rase i u 41,0% sa osobom druge rase, pa na nivou svih redova razlika izgleda mala. Ovaj test, međutim, meša različite ljude: neko ko ima više partnera iste rase može da bude i generalno stroži ili blaži, što može da prikrije stvarni efekat. Zato svakog učesnika poredimo sa njim samim, tako što za 504 osobe koje su imale partnere i iste i druge rase računamo lični udeo odgovora „da" u oba slučaja. Pošto su to dva merenja iste osobe, koristimo upareni Vilkoksonov test, isto kao kod hipoteze H4:
+
+```{r h3-rasa-po-ucesniku}
+# svaku osobu poredimo sa njom samom: udeo "da" za partnere iste i druge rase
+rasa_po_ucesniku <- sd_rasa %>%
+  group_by(iid, gender, samerace) %>%
+  summarise(udeo_da = mean(dec), .groups = "drop") %>%
+  pivot_wider(names_from = samerace, values_from = udeo_da) %>%
+  drop_na(Ne, Da)
+
+test_po_grupi <- function(podaci, grupa) {
+  tibble(grupa = grupa,
+         ucesnika = nrow(podaci),
+         ista_rasa = round(100 * mean(podaci$Da), 1),
+         druga_rasa = round(100 * mean(podaci$Ne), 1),
+         razlika = round(100 * mean(podaci$Da - podaci$Ne), 1),
+         p_vrednost = format.pval(wilcox.test(podaci$Da, podaci$Ne, paired = TRUE)$p.value,
+                                  digits = 2, eps = 0.001))
+}
+
+bind_rows(test_po_grupi(rasa_po_ucesniku, "Svi"),
+          test_po_grupi(filter(rasa_po_ucesniku, gender == "Žena"), "Žene"),
+          test_po_grupi(filter(rasa_po_ucesniku, gender == "Muškarac"), "Muškarci"))
+```
+
+Poređenje unutar iste osobe daje jasniju sliku. Učesnici u proseku kažu „da" u 44,6% sastanaka sa osobom iste rase, naspram 38,4% sa osobom druge rase, što je razlika od 6,2 procentna poena (p < 0,001). Efekat se pre svega odnosi na žene, kod kojih razlika iznosi 10,9 poena (40,8% prema 30,0%, p < 0,001), dok kod muškaraca iznosi svega 1,8 poena i nije statistički značajna (p = 0,30). Prvi deo hipoteze H3 je dakle potvrđen, pri čemu je to prvenstveno obrazac ženskih odluka.
 
 Drugi deo hipoteze: Razlika u godinama.
 
@@ -1117,7 +1225,7 @@ unname(test_h3_godine$statistic) / prod(broj_po_odluci)
 
 Man-Vitnijev test daje p-vrednost od 0,00013 pa formalno odbacujemo H0, ali verovatnoća superiornosti iznosi svega 0,525, što je jedva različito od 0,50, dok su medijane u obe grupe identične i iznose po 3 godine.
 
-Kada spojimo oba dela, zaključujemo da je hipoteza H3 samo formalno potvrđena na papiru zahvaljujući ogromnom broju od preko 8.000 redova, dok su u stvarnosti oba efekta potpuno zanemarljiva. Učesnici u ovom eksperimentu gotovo uopšte nisu birali partnere na osnovu rase ili godina, što je i razumljivo jer se radi o relativno homogenoj grupi postdiplomaca sa istog univerziteta, od kojih je većina u srednjim dvadesetim godinama.
+Kada spojimo oba dela, hipoteza H3 je potvrđena delimično. Ista rasa ima primetan uticaj kada svaku osobu poredimo sa njom samom, pre svega kod žena, dok je uticaj razlike u godinama statistički značajan, ali praktično zanemarljiv.
 
 ## H4: Izjavljene i stvarne preferencije
 
@@ -1273,7 +1381,7 @@ Nultu hipotezu o jednakom uticaju statusa kod oba pola odbacujemo, ali je razlik
 |---------------|---------------|---------------|---------------|---------------|
 | H1: muškarci češće kažu „da" | Hi-kvadrat test i Man-Vitnijev test po učesniku | \< 0,001; \< 0,001 | razlika od 11 procentnih poena (47,4% prema 36,5%) | Potvrđena |
 | H2: privlačnost više utiče na muškarce | Logistička regresija sa interakcijom | \< 0,001 | OR interakcije = 1,19 | Potvrđena |
-| H3: ista rasa | Hi-kvadrat test | 0,037 | razlika od 2 procentna poena, zanemarljiv efekat | Formalno potvrđena, efekat zanemarljiv |
+| H3: ista rasa | Hi-kvadrat test i upareni Vilkoksonov test po učesniku | 0,033; \< 0,001 | razlika od 6,2 poena po učesniku (žene 10,9, muškarci 1,8) | Potvrđena, pre svega kod žena |
 | H3: razlika u godinama | Man-Vitnijev test | \< 0,001 | 0,52, zanemarljiv efekat | Formalno potvrđena, efekat zanemarljiv |
 | H4: razlika izjavljenih i stvarnih preferencija | Logistička regresija po polu i upareni Vilkoksonov test za talase 15 do 21 | \< 0,001 za privlačnost | promena ranga osobina i skok privlačnosti za +8,3 poena | Potvrđena, izraženije kod žena |
 | H5: hipergamija | Logistička regresija sa interakcijom status partnera × pol | 0,003, ali u suprotnom smeru | OR interakcije = 1,33 u korist muškaraca | Nije potvrđena |
@@ -1288,21 +1396,31 @@ Pregled svih sedam izvedenih kolona, načina na koji se računaju i njihove ulog
 
 | Promenljiva | Kako se računa | Zašto |
 |------------------|-----------------------------|--------------------------|
-| `razlika_godina` | apsolutna razlika starosti učesnika i partnera | provera hipoteze H3 i ublažavanje uticaja ekstremnih godina |
+| `razlika_godina` | apsolutna razlika starosti učesnika i partnera | provera hipoteze H3 i mera sličnosti partnera po godinama |
 | `stariji_partner` | starost partnera minus starost učesnika | pokazuje smer razlike u godinama, odnosno da li je partner stariji ili mlađi |
 | `prosek_ocena` | prosek šest ocena osobina partnera | zbirni utisak o partneru kroz svih šest osobina |
-| `attr_relativno` | ocena privlačnosti minus prosečna ocena privlačnosti koju je taj učesnik dao svim partnerima | eliminiše razliku između strogih i blagih ocenjivača |
+| `attr_relativno` | ocena privlačnosti minus prosek ocena privlačnosti koje je taj učesnik dao na svojim ranijim sastancima te večeri | eliminiše razliku između strogih i blagih ocenjivača |
 | `ponderisana_ocena` | prosek ocena partnera ponderisan poenima koje je učesnik pre događaja dodelio svakoj osobini | meri koliko partner ispunjava početne kriterijume tog učesnika |
 | `relativni_redosled` | redni broj sastanka podeljen ukupnim brojem sastanaka te večeri, od 0 do 1 | ispituje efekat zamora tokom večeri na ujednačenoj skali za male i velike događaje |
-| `broj_na_ocena` | broj preskočenih ocena sa sastanka u datom redu, od 0 do 8 | čuva informaciju o tome da učesnici češće preskaču ocenjivanje partnera koje odbijaju |
+| `broj_na_ocena` | broj preskočenih ocena sa sastanka u datom redu, od 0 do 8 | čuva informaciju o praznim obrascima, koji se skoro uvek završavaju odgovorom „ne" |
 
-Prilikom računanja vodimo računa o grupisanju podataka, pa tako kolone attr_relativno i relativni_redosled računamo unutar svakog pojedinačnog učesnika pomoću group_by(iid), dok ostale promenljive računamo na nivou svakog reda. Takođe, kolonu broj_na_ocena moramo da izračunamo sada, dok su prazna polja još uvek u tabeli, jer će nakon imputacije u narednom poglavlju sve te vrednosti biti popunjene:
+Prilikom računanja vodimo računa o grupisanju podataka, pa tako kolone attr_relativno i relativni_redosled računamo unutar svakog pojedinačnog učesnika pomoću group_by(iid), dok ostale promenljive računamo na nivou svakog reda. Kod attr_relativno koristimo samo ranije sastanke, jer model sme da zna samo ono što se već desilo u trenutku odluke, pa na prvom sastanku svakog učesnika ova kolona ostaje prazna i popunjava se medijanom u devetom poglavlju. Takođe, kolonu broj_na_ocena moramo da izračunamo sada, dok su prazna polja još uvek u tabeli, jer će nakon imputacije u narednom poglavlju sve te vrednosti biti popunjene:
 
 ```{r fe-pravljenje}
 # kreiranje novih promenljivih (feature engineering)
+# prosek ocena sa ranijih sastanaka te osobe (na prvom sastanku nema istorije)
+prosek_ranijih <- function(x, redosled) {
+  r <- order(redosled)
+  zbir <- cumsum(coalesce(x[r], 0))
+  broj <- cumsum(!is.na(x[r]))
+  prosek <- c(NA, head(zbir / broj, -1))
+  prosek[is.nan(prosek)] <- NA
+  prosek[order(r)]
+}
+
 sd_fe <- sd %>%
   group_by(iid) %>%
-  mutate(attr_relativno = attr - mean(attr, na.rm = TRUE),
+  mutate(attr_relativno = attr - prosek_ranijih(attr, order),
          relativni_redosled = order / max(order)) %>%
   ungroup() %>%
   mutate(razlika_godina = abs(age - age_o),
@@ -1331,7 +1449,7 @@ sd_fe %>%
 
 Kod promenljive ponderisana_ocena množe se ocene sa sastanka sa poenima koje je učesnik pre događaja dao svakoj od tih šest osobina. Kako ne bismo dobili više od hiljadu NA vrednosti samo zato što je neko preskočio da oceni zajednička interesovanja shar, i u brojiocu i u imeniocu koristimo samo one osobine za koje postoje i ocena sa sastanka i ponder iz uvodnog upitnika. Tako ova kolona ostaje prazna u svega 266 redova kod ljudi kojima fale ili sve ocene ili ceo uvodni upitnik.
 
-Ispis osnovnih statistika potvrđuje da su sve izvedene kolone u očekivanim granicama. Prosek ocena i ponderisana ocena kreću se od 1 do 10, relativna privlačnost ima tačan prosek 0 uz raspon od -7,19 do +6,06 poena u odnosu na lični kriterijum ocenjivača, relativni redosled ide do 1, a broj nedostajućih ocena od 0 do 8.
+Ispis osnovnih statistika potvrđuje da su sve izvedene kolone u očekivanim granicama. Prosek ocena i ponderisana ocena kreću se od 1 do 10, relativna privlačnost ima prosek blizu nule uz raspon od -8 do +7 poena u odnosu na dotadašnji prosek ocenjivača (prazna je u 761 redu, uglavnom na prvim sastancima), relativni redosled ide do 1, a broj nedostajućih ocena od 0 do 8.
 
 ## Povezanost novih promenljivih sa odlukom
 
@@ -1349,7 +1467,7 @@ sd_fe %>%
   arrange(desc(abs(r)))
 ```
 
-Tri nove promenljive pokazuju veoma jaku korelaciju sa odlukom i nalaze se odmah iza same privlačnosti (r = 0,487), a to su attr_relativno sa 0,448, ponderisana_ocena sa 0,443 i prosek_ocena sa 0,433. Broj preskočenih ocena broj_na_ocena ima očekivanu negativnu korelaciju od -0,121, dok su razlike u godinama i redosled sastanka po pitanju linearne korelacije blizu nule.
+Tri nove promenljive pokazuju veoma jaku korelaciju sa odlukom i nalaze se odmah iza same privlačnosti (r = 0,487), a to su ponderisana_ocena sa 0,443, attr_relativno sa 0,437 i prosek_ocena sa 0,433. Broj preskočenih ocena broj_na_ocena ima očekivanu negativnu korelaciju od -0,121, dok su razlike u godinama i redosled sastanka po pitanju linearne korelacije blizu nule.
 
 Pošto koeficijent korelacije hvata samo pravolinijske veze, za najzanimljivije nove kolone proverićemo i kako se procenat odgovora „da" ponaša kada podatke podelimo po grupama.
 
@@ -1364,7 +1482,7 @@ sd_fe %>%
             udeo_da = round(mean(dec), 3), broj = n())
 ```
 
-Ovaj pregled odlično pokazuje zašto smo uveli ovu promenljivu. Kada učesnik partneru da ocenu privlačnosti koja je za više od 1,25 poena niža od njegovog uobičajenog proseka te večeri, kaže mu „da" u svega 10,5% slučajeva. S druge strane, kada je partner ocenjen za više od 1,33 poena iznad proseka tog učesnika, procenat potvrdnih odgovora skače na čak 73,7%. Time model dobija informaciju o tome da li je konkretna sedmica došla od nekoga ko svima deli osmice ili od strogog ocenjivača kome je prosek četiri.
+Ovaj pregled odlično pokazuje zašto smo uveli ovu promenljivu. Kada učesnik partneru da ocenu privlačnosti koja je za 1,5 ili više poena niža od njegovog dotadašnjeg proseka te večeri, kaže mu „da" u svega 10,9% slučajeva. S druge strane, kada je partner ocenjen za 1,5 ili više poena iznad tog proseka, procenat potvrdnih odgovora skače na čak 72,1%. Time model dobija informaciju o tome da li je konkretna sedmica došla od nekoga ko svima deli osmice ili od strogog ocenjivača kome je prosek četiri.
 
 Zatim proveravamo kako se ponaša kolona broj_na_ocena:
 
@@ -1381,7 +1499,7 @@ sd_fe %>%
   summarise(udeo_da = round(mean(dec), 3), broj = n())
 ```
 
-Vidimo veoma jasan obrazac. Dok god je učesnik preskočio samo jednu do tri ocene na formularu, šansa za „da" ostaje blizu proseka i iznosi oko 40% do 42%. Međutim, čim na listiću fali četiri ili više ocena, udeo potvrdnih odgovora pada na 25,4%, a u onih 189 redova gde je učesnik ostavio svih osam skala prazno, rekao je „da" u samo 2,1% slučajeva. Ova kolona će zato biti veoma korisna u modelima jer čuva informaciju koju bi sama imputacija medijanom inače izbrisala.
+Vidimo veoma jasan obrazac. Dok god je učesnik preskočio samo jednu do tri ocene na formularu, udeo odgovora „da" na nivou svih redova ostaje blizu proseka i iznosi oko 40% do 42%. Međutim, čim na listiću fali četiri ili više ocena, udeo potvrdnih odgovora pada na 25,4%, a u onih 189 redova bez ijedne važeće ocene učesnik je rekao „da" u samo 2,1% slučajeva. Ova kolona će zato biti veoma korisna u modelima jer čuva informaciju koju bi sama imputacija medijanom inače izbrisala.
 
 Na kraju proveravamo nelinearne efekte kod smera razlike u godinama stariji_partner po polovima, kao i to da li zamor tokom večeri kroz kolonu relativni_redosled menja odluke:
 
@@ -1454,7 +1572,7 @@ chisq.test(table(sd_fe$ista_oblast, sd_fe$dec))
 -   H0: Odluka na sastanku ne zavisi od toga da li učesnik i partner studiraju istu oblast.
 -   H1: Udeo potvrdnih odgovora zavisi od toga da li učesnik i partner studiraju istu oblast.
 
-Kada su učesnik i partner iz iste oblasti, učesnik kaže „da" u 48,5% slučajeva, naspram 41,3% kada su iz različitih oblasti. Hi-kvadrat test daje statistiku 18,13 i p-vrednost manju od 0,001, pa odbacujemo H0. Za razliku od iste rase, ovde je razlika od oko 7 procentnih poena i praktično primetna, verovatno zato što ista oblast odmah daje zajedničku temu za razgovor. Treba imati u vidu da su ovakvi parovi retki (960 sastanaka, oko 12% onih kod kojih znamo oblast oba učesnika) i da p-vrednost na nivou redova može biti blago preuveličana zbog ponovljenih merenja po učesniku. Promenljivu ista_oblast zadržavamo u skupu za modele.
+Kada su učesnik i partner iz iste oblasti, učesnik kaže „da" u 48,5% slučajeva, naspram 41,3% kada su iz različitih oblasti. Hi-kvadrat test daje statistiku 18,13 i p-vrednost manju od 0,001, pa odbacujemo H0. Razlika od oko 7 procentnih poena je praktično primetna, verovatno zato što ista oblast odmah daje zajedničku temu za razgovor. Treba imati u vidu da su ovakvi parovi retki (960 sastanaka, oko 12% onih kod kojih znamo oblast oba učesnika) i da p-vrednost na nivou redova može biti blago preuveličana zbog ponovljenih merenja po učesniku. Promenljivu ista_oblast zadržavamo u skupu za modele.
 
 Pošto su neke oblasti mnogo zastupljenije od drugih (najviše parova iz iste oblasti ima u biznisu), proveravamo da li ova razlika samo odražava oblast učesnika ili sličnost interesovanja. Zato isti efekat računamo logističkom regresijom uz kontrolu oblasti učesnika field_cd i korelacije interesovanja int_corr:
 
@@ -1524,13 +1642,13 @@ Pre nego što tabelu sa novim promenljivim prosledimo u deveto poglavlje, za sva
 |------------------|------------------------|------------------------------|
 | `razlika_godina`, `stariji_partner` | `age`, `age_o` | Ne, starost partnera je vidljiva tokom samog razgovora |
 | `prosek_ocena`, `ponderisana_ocena` | ocene partnera i preferencije pre događaja | Ne, oba podatka nastaju pre ili u trenutku donošenja odluke |
-| `attr_relativno` | ocene privlačnosti koje je učesnik dao tokom večeri | Ne koristi odluku, ali računa prosek na nivou cele večeri |
+| `attr_relativno` | ocene privlačnosti sa ranijih sastanaka učesnika | Ne, koristi samo sastanke koji su se već desili |
 | `relativni_redosled` | `order` i broj sastanaka učesnika | Ne, redosled stolova je poznat unapred |
 | `broj_na_ocena` | koje ocene nedostaju na obrascu | Ne, obrazac sa ocenama se popunjava u istom trenutku kada i odluka |
 | `ista_oblast` | oblast studija učesnika i partnera iz uvodnih upitnika | Ne, oblast se saznaje na početku razgovora |
 | spojeni nivoi `field_cd`, `career_c` | broj učesnika po kategoriji | Ne, ne koristi odluku dec |
 
-Jedina kolona oko koje vredi ostaviti metodološku napomenu jeste attr_relativno. Pošto ona oduzima prosek svih ocena privlačnosti koje je taj učesnik dao tokom cele večeri, za prvi ili drugi sastanak u taj prosek ulaze i ocene sa sastanaka koji će se desiti pola sata kasnije. To naravno ne predstavlja klasično curenje ciljne promenljive jer nigde ne koristimo kolonu dec, a pošto podelu na trening i test skup radimo po učesniku, trening i test skup ostaju potpuno odvojeni. Ipak, to znači da naš model predviđa odluke u situaciji kada na kraju večeri imamo pred sobom sve popunjene listiće sa ocenama tog učesnika, što ćemo jasno navesti i u zaključku rada.
+Posebnu pažnju zahteva kolona attr_relativno. Da smo od ocene oduzimali prosek cele večeri, za prvi sastanak u taj prosek bi ušle i ocene sa sastanaka koji se još nisu desili, što bi prekršilo naše pravilo o vremenu nastanka podatka. Zato koristimo prosek samo ranijih sastanaka, pa model zna samo ono što bi znao i u trenutku odluke.
 
 ## Čuvanje skupa sa novim promenljivim
 
@@ -1816,9 +1934,9 @@ rezultati_cv %>%
 
 Rezultati unakrsne validacije daju veoma jasnu početnu sliku. Osnovni model koji uvek predviđa „ne" ostvaruje tačnost od 57,3%, dok su mu odziv i F1 mera nepostojeći jer ne pronalazi nijedan pozitivan sastanak. Svi obučeni modeli ga ubedljivo nadmašuju.
 
-Najbolji rezultat postižu regularizovani linearni modeli, i to na prvom mestu lasso sa AUC skorom od 0,839, tačnošću od 76,0% i F1 merom od 0,706, a odmah iza njega je ridge sa AUC vrednošću od 0,834. Obična logistička regresija bez regularizacije zaostaje sa AUC skorom od 0,819 i tačnošću od 75,1%. Razlog za ovu razliku leži u tome što matrica prediktora ima čak 96 kolona (uključujući 17 hobija i mnoštvo binarnih kolona za fakultetska usmerenja i željene karijere), pa obična logistička regresija počinje blago da se preprilagođava šumu u trening podacima, dok lasso i ridge uspešno suzbijaju uticaj nebitnih kolona.
+Najbolji rezultat postižu regularizovani linearni modeli, i to na prvom mestu lasso sa AUC skorom od 0,836, tačnošću od 75,4% i F1 merom od 0,698, a odmah iza njega je ridge sa AUC vrednošću od 0,832. Obična logistička regresija bez regularizacije zaostaje sa AUC skorom od 0,819 i tačnošću od 74,7%. Razlog za ovu razliku leži u tome što matrica prediktora ima čak 96 kolona (uključujući 17 hobija i mnoštvo binarnih kolona za fakultetska usmerenja i željene karijere), pa obična logistička regresija počinje blago da se preprilagođava šumu u trening podacima, dok lasso i ridge uspešno suzbijaju uticaj nebitnih kolona.
 
-Algoritam kNN sa k = 51 se u ovom početnom krugu pokazao najslabije od svih pravih modela, sa AUC vrednošću od 0,772 i tačnošću od 69,9%. Razlog za ovako slab rezultat je klasično prokletstvo dimenzionalnosti: kada kNN računa Euklidsko rastojanje kroz 96 kolona, razlike u desetinama nebitnih kolona o hobijima i oblastima studija potpuno zamaskiraju sličnost po onih par ključnih ocena sa sastanka. Ovu pretpostavku ćemo direktno proveriti i rešiti u sledećem poglavlju.
+Algoritam kNN sa k = 51 se u ovom početnom krugu pokazao najslabije od svih pravih modela, sa AUC vrednošću od 0,768 i tačnošću od 69,9%. Razlog za ovako slab rezultat je klasično prokletstvo dimenzionalnosti: kada kNN računa Euklidsko rastojanje kroz 96 kolona, razlike u desetinama nebitnih kolona o hobijima i oblastima studija potpuno zamaskiraju sličnost po onih par ključnih ocena sa sastanka. Ovu pretpostavku ćemo direktno proveriti i rešiti u sledećem poglavlju.
 
 Pored toga, već iz eksplorativne analize znamo da verovatnoća odluke „da" raste prilično monotono i ravnomerno sa porastom ključnih ocena partnera, zbog čega linearni modeli u ovom problemu prirodno imaju prednost nad neparametarskim metodama.
 
@@ -1842,7 +1960,7 @@ rezultati_cv %>%
   mutate(across(where(is.numeric), ~ round(.x, 3)))
 ```
 
-Uključivanjem ove dve kolone AUC skor kod logističke regresije raste sa 0,819 na 0,844, dok kod lasso modela raste sa 0,839 na 0,858. Poboljšanje od oko 2 procentna poena u AUC skoru je umereno: kolona like donosi nešto dodatne informacije o odluci, ali ne mnogo, i naš osnovni lasso model bez nje ostaje sasvim blizu po tačnosti. To znači da šest pojedinačnih ocena osobina i naše izvedene promenljive već uspevaju da uhvate najveći deo onoga što čini opšti utisak o partneru, pa kroz naredno poglavlje nastavljamo sa usavršavanjem modela bez kolona like i prob.
+Uključivanjem ove dve kolone AUC skor kod logističke regresije raste sa 0,819 na 0,843, dok kod lasso modela raste sa 0,836 na 0,856. Poboljšanje od oko 2 procentna poena u AUC skoru je umereno: kolona like donosi nešto dodatne informacije o odluci, ali ne mnogo, i naš osnovni lasso model bez nje ostaje sasvim blizu po tačnosti. To znači da šest pojedinačnih ocena osobina i naše izvedene promenljive već uspevaju da uhvate najveći deo onoga što čini opšti utisak o partneru, pa kroz naredno poglavlje nastavljamo sa usavršavanjem modela bez kolona like i prob.
 
 # Iteracije modela
 
@@ -1876,7 +1994,7 @@ tibble(model = c("Lasso", "Ridge"),
   mutate(across(where(is.numeric), ~ signif(.x, 3)))
 ```
 
-Na graficima vidimo kako se ponaša model kada menjamo jačinu kazne, pri čemu brojevi na gornjoj ivici pokazuju koliko je od 96 kolona ostalo u modelu sa koeficijentom različitim od nule. Na desnoj strani grafika, gde je vrednost -log(λ) velika (odnosno gde je sama kazna λ skoro nula), model zadržava skoro sve kolone i daje niži AUC od oko 0,815 zbog preprilagođavanja. Kako idemo ulevo i pojačavamo kaznu, lasso postepeno gasi nebitne promenljive i AUC dostiže svoj maksimum od 0,840 pri λ = 0,0178 (leva isprekidana linija, lambda.min), dok dalje pojačavanje kazne briše i korisne ocene pa kriva naglo pada.
+Na graficima vidimo kako se ponaša model kada menjamo jačinu kazne, pri čemu brojevi na gornjoj ivici pokazuju koliko je od 96 kolona ostalo u modelu sa koeficijentom različitim od nule. Na desnoj strani grafika, gde je vrednost -log(λ) velika (odnosno gde je sama kazna λ skoro nula), model zadržava skoro sve kolone i daje niži AUC od oko 0,822 zbog preprilagođavanja. Kako idemo ulevo i pojačavamo kaznu, lasso postepeno gasi nebitne promenljive i AUC dostiže svoj maksimum od 0,837 pri λ = 0,0178 (leva isprekidana linija, lambda.min), dok dalje pojačavanje kazne briše i korisne ocene pa kriva naglo pada.
 
 ### Broj suseda k
 
@@ -1916,7 +2034,7 @@ najbolji_knn %>%
   mutate(across(where(is.numeric), ~ round(.x, 3)))
 ```
 
-Grafik daje izuzetno jasan rezultat i u potpunosti potvrđuje našu hipotezu o prokletstvu dimenzionalnosti. Crvena kriva koja koristi samo ocene sa sastanka i izvedene promenljive leži drastično iznad plave krive sa svim kolonama za svaku vrednost parametra k. Takođe vidimo da kod obe verzije veći broj suseda donosi stabilnije verovatnoće, pa suženi kNN model pri k = 101 dostiže AUC od 0,831, tačnost od 75,8% i F1 meru od 0,718, čime staje rame uz rame sa ridge i lasso regresijom.
+Grafik daje izuzetno jasan rezultat i u potpunosti potvrđuje našu hipotezu o prokletstvu dimenzionalnosti. Crvena kriva koja koristi samo ocene sa sastanka i izvedene promenljive leži drastično iznad plave krive sa svim kolonama za svaku vrednost parametra k. Takođe vidimo da kod obe verzije veći broj suseda donosi stabilnije verovatnoće, pa suženi kNN model pri k = 151 dostiže AUC od 0,828, tačnost od 75,5% i F1 meru od 0,713, čime staje rame uz rame sa ridge i lasso regresijom. Vrednost k = 151 je najveća u našoj mreži, ali se od k = 51 nadalje AUC gotovo ne menja (0,826 do 0,828), pa od daljeg povećavanja ne očekujemo primetan dobitak.
 
 ## Izbor promenljivih
 
@@ -1945,7 +2063,7 @@ koef_tabela %>%
   mutate(koeficijent = round(koeficijent, 3))
 ```
 
-Vidimo da je lasso uradio veoma oštru selekciju: od ukupno 96 kolona, čak 79 je postavio na tačnu nulu i izbacio iz modela, zadržavši svega 17 prediktora. Na samom vrhu po jačini uticaja nalazi se naša izvedena promenljiva attr_relativno sa koeficijentom 0,519, a odmah iza nje su zajednička interesovanja shar (0,419), sirova ocena privlačnosti attr (0,398) i zabavnost fun (0,328). Na petom mestu je još jedna naša nova kolona, broj_na_ocena sa snažnim negativnim koeficijentom od -0,230, što potvrđuje da je čuvanje informacije o preskočenim ocenama bio odličan potez. U modelu su ostali još i važnost iste rase imprace, pol učesnika, evropska rasa, nekoliko preferencija i ponderisana ocena, dok su skoro svi hobiji i oblasti studija obrisani.
+Vidimo da je lasso uradio veoma oštru selekciju: od ukupno 96 kolona, čak 78 je postavio na tačnu nulu i izbacio iz modela, zadržavši svega 18 prediktora. Na samom vrhu po jačini uticaja su sirova ocena privlačnosti attr (0,624), zajednička interesovanja shar (0,418) i zabavnost fun (0,333), a odmah iza njih je naša izvedena promenljiva attr_relativno (0,325). Na petom mestu je još jedna naša nova kolona, broj_na_ocena sa negativnim koeficijentom od -0,227, što potvrđuje da je čuvanje informacije o preskočenim ocenama bio dobar potez. U modelu su ostali još i važnost iste rase imprace, pol učesnika, evropska i azijska rasa, nekoliko preferencija i ponderisana ocena, dok su skoro svi hobiji i oblasti studija obrisani.
 
 ### Multikolinearnost
 
@@ -1971,7 +2089,7 @@ model_vif_2 <- update(model_vif, . ~ . - prosek_ocena)
 sort(round(vif_glm(model_vif_2), 1), decreasing = TRUE)
 ```
 
-U prvom modelu kolona prosek_ocena ima ogroman VIF od čak 72,7, dok šest pojedinačnih ocena ima VIF između 5,2 i 6,6. To je sasvim logično jer je prosek_ocena čista aritmetička sredina tih šest ocena, pa u linearnom modelu pravi skoro savršenu kolinearnost. Čim u drugom koraku izbacimo prosek_ocena iz modela, VIF vrednosti za svih šest ocena padaju na potpuno bezbedan nivo između 1,6 i 3,9, dok jedino ponderisana_ocena ostaje visoka sa 12,7 jer i ona kombinuje iste te ocene.
+U prvom modelu kolona prosek_ocena ima ogroman VIF od čak 75,9, dok šest pojedinačnih ocena ima VIF između 5,4 i 6,1. To je sasvim logično jer je prosek_ocena čista aritmetička sredina tih šest ocena, pa u linearnom modelu pravi skoro savršenu kolinearnost. Čim u drugom koraku izbacimo prosek_ocena iz modela, VIF vrednosti za svih šest ocena padaju na potpuno bezbedan nivo između 1,6 i 3,3, dok jedino ponderisana_ocena ostaje visoka sa 12,9 jer i ona kombinuje iste te ocene.
 
 Iz istog matematičkog razloga u ovakvu proveru ne treba stavljati svih šest kolona početnih preferencija attr1_1 do shar1_1 odjednom, jer je njihov zbir uvek fiksiran na 100, pa je svaka šesta kolona u potpunosti određena zbirom preostalih pet.
 
@@ -2008,11 +2126,11 @@ bind_rows("medijana" = rezultati_cv %>% filter(model == "Lasso") %>% select(-mod
   mutate(across(where(is.numeric), ~ round(.x, 3)))
 ```
 
-Kada uporedimo lasso model uz imputaciju medijanom (AUC 0,839, tačnost 76,0%) i uz regresionu imputaciju (AUC 0,839, tačnost 76,2%), vidimo da su rezultati praktično identični. Razlog zašto složenija imputacija ovde ne donosi nikakav skok leži u tome što ocenama nedostaje relativno mali procenat podataka, a glavnu informaciju o tome da je učesnik bojkotovao ocenjivanje partnera koji mu se ne sviđa model je već dobio kroz našu izvedenu kolonu broj_na_ocena. Zato se u konačnom modelu držimo jednostavnije imputacije medijanom.
+Kada uporedimo lasso model uz imputaciju medijanom (AUC 0,836, tačnost 75,4%) i uz regresionu imputaciju (AUC 0,835, tačnost 75,5%), vidimo da su rezultati praktično identični. Razlog zašto složenija imputacija ovde ne donosi nikakav skok leži u tome što ocenama nedostaje relativno mali procenat podataka, a informaciju o praznim obrascima model je već dobio kroz našu izvedenu kolonu broj_na_ocena. Zato se u konačnom modelu držimo jednostavnije imputacije medijanom.
 
 ## Neuravnoteženost klasa i izbor praga
 
-Pošto u trening skupu imamo 42,7% odgovora „da" i 57,3% odgovora „ne", podrazumevani prag verovatnoće od 0,50 pri kom model seče odluku više odgovara brojnijoj klasi „ne", zbog čega je kod našeg lasso modela specifičnost (82,3%) dosta viša od odziva (67,5%). Zato proveravamo kako se menjaju tačnost, preciznost, odziv i F1 mera kada prag odlučivanja pomeramo u rasponu od 0,20 do 0,70:
+Pošto u trening skupu imamo 42,7% odgovora „da" i 57,3% odgovora „ne", podrazumevani prag verovatnoće od 0,50 pri kom model seče odluku više odgovara brojnijoj klasi „ne", zbog čega je kod našeg lasso modela specifičnost (82,0%) dosta viša od odziva (66,5%). Zato proveravamo kako se menjaju tačnost, preciznost, odziv i F1 mera kada prag odlučivanja pomeramo u rasponu od 0,20 do 0,70:
 
 ```{r it-prag, cache = koristi_cache, cache.extra = kljuc_cache, fig.height = 4}
 set.seed(2026)
@@ -2035,7 +2153,7 @@ najbolji_prag <- po_pragu$prag[which.max(po_pragu$f1)]
 najbolji_prag
 ```
 
-Grafik jasno prikazuje kompromis između preciznosti i odziva. Dok se maksimalna ukupna tačnost postiže oko praga 0,45 do 0,50, F1 mera svoj vrhunac od `r format(round(max(po_pragu$f1), 3), decimal.mark = ",")` dostiže pri nižem pragu od 0,35 (naspram 0,706 na pragu 0,50). Spuštanjem praga na 0,35 govorimo modelu da lakše predviđa „da", čime pronalazimo znatno veći procenat stvarnih simpatija uz nešto više lažnih uzbuna. Zato ćemo na test skupu za lasso model pored standardnog praga 0,50 prikazati i rezultat sa pragom 0,35.
+Grafik jasno prikazuje kompromis između preciznosti i odziva. Dok se maksimalna ukupna tačnost postiže oko praga 0,45 do 0,50, F1 mera svoj vrhunac od `r format(round(max(po_pragu$f1), 3), decimal.mark = ",")` dostiže pri nižem pragu od 0,35 (naspram 0,697 na pragu 0,50). Spuštanjem praga na 0,35 govorimo modelu da lakše predviđa „da", čime pronalazimo znatno veći procenat stvarnih simpatija uz nešto više lažnih uzbuna. Zato ćemo na test skupu za lasso model pored standardnog praga 0,50 prikazati i rezultat sa pragom 0,35.
 
 ## Pregled iteracija
 
@@ -2062,7 +2180,7 @@ pregled %>%
   arrange(desc(auc))
 ```
 
-Kada podvučemo crtu ispod svih isprobanih iteracija na trening skupu, vidimo da najveći dobitak donose eliminacija šuma kroz izbor promenljivih i regularizaciju (lasso, ridge i suženi skup kolona za kNN), čime svi dobri modeli dolaze u veoma uzak pojas AUC skora između 0,831 i 0,839. Nelinearne transformacije i regresiona imputacija nisu donele poboljšanje, pa na konačno testiranje izvodimo čiste, regularizovane modele i popravljeni kNN. Treba imati u vidu da su k = 101, izbor 13 kolona za kNN i prag 0,35 izabrani upravo na osnovu ovih rezultata unakrsne validacije, pa su brojevi u ovoj tabeli blago optimistični. Poštenu procenu daje tek test skup u nastavku.
+Kada podvučemo crtu ispod svih isprobanih iteracija na trening skupu, vidimo da najveći dobitak donose eliminacija šuma kroz izbor promenljivih i regularizaciju (lasso, ridge i suženi skup kolona za kNN), čime svi dobri modeli dolaze u veoma uzak pojas AUC skora između 0,828 i 0,836. Nelinearne transformacije i regresiona imputacija nisu donele poboljšanje, pa na konačno testiranje izvodimo čiste, regularizovane modele i popravljeni kNN. Treba imati u vidu da su k = 151, izbor 13 kolona za kNN i prag 0,35 izabrani upravo na osnovu ovih rezultata unakrsne validacije, pa su brojevi u ovoj tabeli blago optimistični. Poštenu procenu daje tek test skup u nastavku.
 
 ## Konačna procena na test skupu
 
@@ -2104,7 +2222,7 @@ metrike(test$dec, p_test_lasso) %>%
   mutate(across(where(is.numeric), ~ round(.x, 3)))
 ```
 
-Unakrsna validacija na trening skupu izabrala je λ ≈ 0,026, pri kom lasso zadržava 13 kolona. To je za nijansu drugačije od λ = 0,0178 i 17 kolona iz desetog poglavlja, jer cv.glmnet ovde koristi drugu nasumičnu podelu učesnika na preklope, a kriva AUC je oko svog maksimuma skoro ravna, pa male promene podele malo pomeraju izabrano λ. Na test skupu ovaj model daje AUC 0,821 i tačnost 74,4%, uz 409 tačno prepoznatih odgovora „da" i 816 tačno prepoznatih odgovora „ne".
+Unakrsna validacija na trening skupu izabrala je λ ≈ 0,026, pri kom lasso zadržava 12 kolona. To je za nijansu drugačije od λ = 0,0178 i 18 kolona iz odeljka o izboru promenljivih, jer cv.glmnet ovde koristi drugu nasumičnu podelu učesnika na preklope, a kriva AUC je oko svog maksimuma skoro ravna, pa male promene podele malo pomeraju izabrano λ. Na test skupu ovaj model daje AUC 0,821 i tačnost 75,1%, uz 415 tačno prepoznatih odgovora „da" i 821 tačno prepoznatih odgovora „ne".
 
 Test skup je u ovom postupku upotrebljen samo jednom, na samom kraju, i nijedna odluka o modelu (izbor kolona, λ, k ili praga) nije doneta na osnovu njega. Zato je mera koju dobijemo poštena procena toga kako bi se model ponašao na novim učesnicima.
 
@@ -2134,7 +2252,7 @@ metrike(test$dec, predvidjanja$Lasso, prag = najbolji_prag) %>%
   mutate(across(where(is.numeric), ~ round(.x, 3)))
 ```
 
-Na potpuno novim učesnicima iz test skupa sva četiri prava modela daju vrlo slične rezultate. Obična logistička regresija ima AUC 0,826 (tačnost 75,6%), ridge 0,822 (tačnost 75,4%), lasso 0,821 (tačnost 74,4%), a suženi kNN sa k = 101 ostvaruje 0,813, dok naivni osnovni model ima tačnost od 60,9% i AUC 0,50. Iako je logistička regresija na test skupu za nijansu ispred lasso modela, razlika od 0,005 je daleko manja od nesigurnosti same procene, što ćemo videti i kroz bootstrap interval na kraju poglavlja. Model ne menjamo naknadno na osnovu test skupa, jer bismo time test skup pretvorili u još jedan validacioni skup i izgubili poštenu procenu, pa kao glavni model zadržavamo lasso, koji je bio najbolji u unakrsnoj validaciji i koristi samo 17 kolona. Kada na lasso model primenimo niži prag odlučivanja od 0,35 koji smo pronašli u prethodnom koraku, odziv na test skupu skače sa 63,5% na čak 83,9%, dok F1 mera raste sa 0,660 na 0,690.
+Na potpuno novim učesnicima iz test skupa sva četiri prava modela daju vrlo slične rezultate. Obična logistička regresija ima AUC 0,827 (tačnost 75,7%), ridge 0,824 (tačnost 75,6%), lasso 0,821 (tačnost 75,1%), a suženi kNN sa k = 151 ostvaruje 0,818, dok naivni osnovni model ima tačnost od 60,9% i AUC 0,50. Iako je logistička regresija na test skupu za nijansu ispred lasso modela, razlika od 0,006 je daleko manja od nesigurnosti same procene, što ćemo videti i kroz bootstrap interval na kraju poglavlja. Model ne menjamo naknadno na osnovu test skupa, jer bismo time test skup pretvorili u još jedan validacioni skup i izgubili poštenu procenu, pa kao glavni model zadržavamo lasso, koji je bio najbolji u unakrsnoj validaciji i koristi samo 12 kolona. Kada na lasso model primenimo niži prag odlučivanja od 0,35 koji smo pronašli u prethodnom koraku, odziv na test skupu skače sa 64,4% na čak 84,6%, dok F1 mera raste sa 0,669 na 0,697.
 
 ### ROC krive i matrica konfuzije
 
@@ -2164,7 +2282,7 @@ propusteno_da <- matrica["Da", "Ne"]
 pogresno_da <- matrica["Ne", "Da"]
 ```
 
-Sa grafika vidimo da se ROC krive za lasso, ridge, logističku regresiju i popravljeni kNN model skoro potpuno preklapaju i visoko izdižu iznad sive dijagonale nasumičnog pogađanja. Iz matrice konfuzije vidimo da je lasso model na 1.646 sastanaka iz test skupa tačno pogodio 409 potvrdnih i 816 odričnih odluka, dok je u 235 slučajeva propustio da prepozna „da" i u 186 slučajeva pogrešno predvideo „da" kada je učesnik zapravo odbio partnera.
+Sa grafika vidimo da se ROC krive za lasso, ridge, logističku regresiju i popravljeni kNN model skoro potpuno preklapaju i visoko izdižu iznad sive dijagonale nasumičnog pogađanja. Iz matrice konfuzije vidimo da je lasso model na 1.646 sastanaka iz test skupa tačno pogodio 415 potvrdnih i 821 odričnu odluku, dok je u 229 slučajeva propustio da prepozna „da" i u 181 slučaju pogrešno predvideo „da" kada je učesnik zapravo odbio partnera.
 
 ### Model sa ocenama like i prob na test skupu
 
@@ -2178,7 +2296,34 @@ test_sa <- metrike(test$dec, p_lasso_sa)
 test_sa %>% mutate(across(where(is.numeric), ~ round(.x, 3)))
 ```
 
-Kao što smo videli i na trening skupu, kada lasso modelu dozvolimo da koristi i opštu ocenu dopadanja like i procenu verovatnoće prob, AUC na test skupu raste sa 0,821 na 0,848, a tačnost na 76,9%.
+Kao što smo videli i na trening skupu, kada lasso modelu dozvolimo da koristi i opštu ocenu dopadanja like i procenu verovatnoće prob, AUC na test skupu raste sa 0,821 na 0,854, a tačnost na 77,0%.
+
+### Provera osetljivosti rezultata
+
+U četvrtom poglavlju smo videli da se prazni obrasci skoro uvek završavaju odgovorom „ne". Zato proveravamo da li dobar rezultat modela zavisi od tih redova, tako što ih izuzimamo iz test skupa:
+
+```{r it-test-bez-praznih}
+sa_ocenama <- test$broj_na_ocena < 8
+
+sum(!sa_ocenama)
+
+metrike(test$dec[sa_ocenama], predvidjanja$Lasso[sa_ocenama]) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+Bez 40 praznih obrazaca AUC se menja sa 0,821 na 0,817, a tačnost sa 75,1% na 74,6%, pa rezultat modela ne zavisi od ovih redova. Na isti način proveravamo i ekstremnu starost iz petog poglavlja, tako što izuzimamo redove u kojima je učesnik ili partner stariji od 34 godine:
+
+```{r it-test-bez-ekstremnih}
+ekstremna_starost <- coalesce(test$age > gornja_granica, FALSE) |
+  coalesce(test$age_o > gornja_granica, FALSE)
+
+sum(ekstremna_starost)
+
+metrike(test$dec[!ekstremna_starost], predvidjanja$Lasso[!ekstremna_starost]) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+Bez 83 takva reda AUC ostaje 0,821, a tačnost iznosi 75,0%, pa ni ekstremna starost ne utiče na rezultat.
 
 ## Nesigurnost procene: bootstrap
 
@@ -2202,7 +2347,7 @@ ip_lasso <- boot::boot.ci(boot_rezultat, type = "perc")$percent[4:5]
 round(c(auc = boot_rezultat$t0, donja = ip_lasso[1], gornja = ip_lasso[2]), 3)
 ```
 
-Dobijeni 95% bootstrap interval poverenja za AUC lasso modela na test skupu kreće se od 0,786 do 0,855, što potvrđuje da model stabilno i pouzdano razdvaja klase na novim ispitanicima. Pri tome bootstrap ponovo uzorkuje samo test učesnike, dok sam model ostaje isti, pa interval meri nesigurnost koja potiče od izbora test skupa, a ne i od izbora trening skupa. Interval je ipak dovoljno širok da razlike od 0,01 do 0,02 u AUC skoru između najboljih modela treba tumačiti oprezno, jer bi se sa drugačijim izborom test učesnika redosled modela lako mogao promeniti.
+Dobijeni 95% bootstrap interval poverenja za AUC lasso modela na test skupu kreće se od 0,783 do 0,857, što potvrđuje da model stabilno i pouzdano razdvaja klase na novim ispitanicima. Pri tome bootstrap ponovo uzorkuje samo test učesnike, dok sam model ostaje isti, pa interval meri nesigurnost koja potiče od izbora test skupa, a ne i od izbora trening skupa. Interval je ipak dovoljno širok da razlike od 0,01 do 0,02 u AUC skoru između najboljih modela treba tumačiti oprezno, jer bi se sa drugačijim izborom test učesnika redosled modela lako mogao promeniti.
 
 # Zaključak
 
@@ -2212,21 +2357,20 @@ U ovom seminarskom radu sproveli smo kompletnu analizu Speed Dating skupa podata
 
 -   Hipoteza H1 je potvrđena. Muškarci su u proseku manje izbirljivi na brzim sastancima i daju potvrdan odgovor u 47,4% slučajeva naspram 36,5% kod žena. Razlika je visoko statistički značajna i na nivou sastanaka i na nivou pojedinačnih učesnika (p \< 0,001), uz umeren efekat od oko 11 procentnih poena.
 -   Hipoteza H2 je potvrđena. Logistička regresija sa interakcijom je pokazala da fizička privlačnost partnera jače utiče na odluku muškaraca nego žena (OR interakcije = 1,19, p \< 0,001). Svaki dodatni poen na skali privlačnosti povećava šansu za odgovor „da" za 2,17 puta kod muškaraca, u poređenju sa 1,82 puta kod žena.
--   Hipoteza H3 je samo formalno potvrđena zbog velikog uzorka, dok su u praksi efekti zanemarljivi. Učesnici za nijansu češće kažu „da" osobama iste rase (43,4% prema 41,1%, p = 0,037) i partnerima sa manjom razlikom u godinama (p \< 0,001, verovatnoća superiornosti 0,52), ali su oba efekta toliko blizu nule da nemaju praktični značaj.
+-   Hipoteza H3 je delimično potvrđena. Kada svakog učesnika poredimo sa njim samim, on kaže „da" u 44,6% sastanaka sa osobom iste rase naspram 38,4% sa osobom druge rase (p \< 0,001). Taj efekat je izražen kod žena (razlika od 10,9 poena), dok kod muškaraca nije značajan (1,8 poena, p = 0,30). Uticaj manje razlike u godinama je statistički značajan (p \< 0,001), ali praktično zanemarljiv (verovatnoća superiornosti 0,52).
 -   Hipoteza H4 je u potpunosti potvrđena kroz dve nezavisne provere. Iako učesnici, a posebno žene, u uvodnim upitnicima tvrde da su im inteligencija i iskrenost važnije od izgleda, modeli nad stvarnim odlukama i samoprocena učesnika dan nakon događaja (gde privlačnost skače sa 23,9 na 32,2 poena) pokazuju da na četvorominutnom sastanku odluku dominantno određuju privlačnost, zajednička interesovanja i zabavnost.
 -   Hipoteza H5 o hipergamiji nije potvrđena. Žene nisu birale partnere sa karijerom višeg statusa više od muškaraca, već je obrnuto: status partnerove karijere jače je uticao na odluku muškaraca (OR interakcije = 1,33, p = 0,003), a kod žena je efekat nestao kada smo uzeli u obzir ocene sa sastanka.
 
 ## Modeli
 
-U delu sa mašinskim učenjem pokazali smo da regularizovani linearni modeli daju najbolje rezultate pri predviđanju odluke sa sastanka. Lasso model, koji smo na osnovu unakrsne validacije izabrali kao glavni, od 96 početnih kolona zadržao je svega 17 najbitnijih prediktora i na nezavisnom test skupu ostvario AUC skor od 0,821 (uz 95% bootstrap interval poverenja od 0,786 do 0,855) i tačnost od 74,4%, čime je ubedljivo nadmašio osnovni model čija je tačnost 60,9%. Ridge i obična logistička regresija su na test skupu bili praktično jednako dobri (AUC 0,822 i 0,826), što pokazuje da je za ovaj problem ključno koje promenljive model dobija, a manje koji linearni model koristimo. Kao najvažniji prediktori u modelu izdvojile su se naše izvedene promenljive, pre svega relativna privlačnost u odnosu na prosek ocenjivača attr_relativno i broj preskočenih ocena na formularu broj_na_ocena, zajedno sa ocenama privlačnosti, zajedničkih interesovanja i zabavnosti. Pri tome treba razlikovati predviđanje od uzroka: broj_na_ocena dobro predviđa odluku, ali nije razlog odluke, već posledica toga što učesnik ne popunjava formular do kraja za partnera koji mu se ne dopada. Takođe smo demonstrirali kako uklanjanje nebitnih kolona rešava problem prokletstva dimenzionalnosti kod algoritma kNN, čiji je AUC u unakrsnoj validaciji nakon sužavanja skupa prediktora skočio sa 0,772 na 0,831.
+U delu sa mašinskim učenjem pokazali smo da regularizovani linearni modeli daju najbolje rezultate pri predviđanju odluke sa sastanka. Lasso model, koji smo na osnovu unakrsne validacije izabrali kao glavni, od 96 početnih kolona zadržao je svega 12 najbitnijih prediktora i na nezavisnom test skupu ostvario AUC skor od 0,821 (uz 95% bootstrap interval poverenja od 0,783 do 0,857) i tačnost od 75,1%, čime je ubedljivo nadmašio osnovni model čija je tačnost 60,9%. Ridge i obična logistička regresija su na test skupu bili praktično jednako dobri (AUC 0,824 i 0,827), što pokazuje da je za ovaj problem ključno koje promenljive model dobija, a manje koji linearni model koristimo. Kao najvažniji prediktori u modelu izdvojile su se ocene privlačnosti, zajedničkih interesovanja i zabavnosti, zajedno sa našim izvedenim promenljivim attr_relativno, koja poredi ocenu sa dotadašnjim prosekom ocenjivača, i broj_na_ocena, koja beleži broj preskočenih ocena na formularu. Pri tome treba razlikovati predviđanje od uzroka: broj_na_ocena dobro predviđa odluku, ali nije njen uzrok, već pre svega izdvaja prazne obrasce, koji se skoro uvek završavaju odgovorom „ne". Takođe smo demonstrirali kako uklanjanje nebitnih kolona rešava problem prokletstva dimenzionalnosti kod algoritma kNN, čiji je AUC u unakrsnoj validaciji nakon sužavanja skupa prediktora skočio sa 0,768 na 0,828.
 
 ## Ograničenja
 
--   Specifičnost uzorka. Svi ispitanici u eksperimentu su postdiplomski studenti Univerziteta Kolumbija, mahom u srednjim dvadesetim godinama, pa se zaključci o zanemarljivom uticaju rase ili godina ne mogu automatski preslikati na opštu populaciju.
+-   Specifičnost uzorka. Svi ispitanici u eksperimentu su postdiplomski studenti Univerziteta Kolumbija, mahom u srednjim dvadesetim godinama, pa se zaključci o uticaju rase i godina ne mogu automatski preslikati na opštu populaciju.
 -   Zavisnost opažanja po učesniku. Pošto svaki učesnik donosi između 5 i 22 odluke tokom večeri, redovi u tabeli nisu nezavisni. Ovaj problem smo kontrolisali grupisanjem po učesniku prilikom podele na trening i test skup, tokom unakrsne validacije i u bootstrap analizi, dok bi za formalno modelovanje korelacione strukture unutar osobe bilo potrebno koristiti mešovite modele sa slučajnim efektima.
--   Način računanja relativne privlačnosti. Izvedena kolona attr_relativno koristi prosek svih ocena koje je učesnik dao tokom cele večeri, pa je primenljiva u scenariju kada odluke predviđamo nakon što su svi sastanci završeni, a ne u realnom vremenu nakon svakog pojedinačnog stola.
 -   Format od četiri minuta. Činjenica da inteligencija, iskrenost i ambicioznost slabo utiču na odluku direktna je posledica toga što za četiri minuta razgovora te osobine nije ni moguće dobro proceniti, pa se naši zaključci odnose isključivo na mehanizam prvog utiska.
--   Mehanizam nedostajanja ocena. Pokazali smo da učesnici ne preskaču ocenjivanje partnera slučajno, već znatno češće ostavljaju prazna polja kod osoba koje odbijaju (nedostajanje nije slučajno), što smo u modelu uspešno kompenzovali uvođenjem indikatora broja nedostajućih ocena.
+-   Mehanizam nedostajanja ocena. Nedostajanje nije slučajno, a najjači signal daje 189 praznih obrazaca, od kojih se samo 4 završavaju odgovorom „da". Ne znamo da li su ti učesnici svesno rekli „ne" ili je obrazac ostao nepopunjen. Model ovu informaciju koristi preko kolone broj_na_ocena, ali kada takve redove izuzmemo iz test skupa, AUC se menja samo sa 0,821 na 0,817.
 
 ## Mogući nastavak rada
 
