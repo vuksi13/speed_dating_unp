@@ -7,7 +7,9 @@ Work is on the git branch **`luka`**.
 
 Open Claude Code in this project folder and say:
 
-> Read `NAPREDAK_3.md` and continue the way it describes. Next step: explain chapter 5.
+> Read `NAPREDAK_3.md` and continue the way it describes. Next step: review chapter 7.
+
+Since 27 Nov: review **all** chapters first and explain them afterwards. Edit only the chapter under review, and log every change with its reason in `IZMENE.md` (for the professor). If a fix moves numbers in a later chapter, note it in `IZMENE.md` and update it when that chapter is reviewed.
 
 ## How we work (keep this process)
 
@@ -29,8 +31,9 @@ You push to GitHub yourself, so Claude should only say when something is ready.
 | 2 Opis i priprema | Rewritten and shortened; column list moved to an appendix |
 | 3 Čišćenje | Rewritten, reviewed and explained |
 | 4 Nedostajuće vrednosti | Rewritten, reviewed and explained |
-| 5 Ekstremne vrednosti | Rewritten and reviewed; **explanation still to do** |
-| 6–11 | Numbers updated, but **not yet deeply reviewed** |
+| 5 Ekstremne vrednosti | Rewritten, reviewed and explained |
+| 6 Eksplorativna analiza | Rewritten and reviewed (27 Nov), including your follow-up fixes; explanation later |
+| 7–11 | Numbers updated, but **not yet deeply reviewed** |
 
 ## Decisions made, with reasons
 
@@ -43,7 +46,8 @@ You push to GitHub yourself, so Claude should only say when something is ready.
 | Participant 66: `amb1_1` 53 → 5 | The other five traits sum to 95; 53 is by far the highest value (next is 30). Logical imputation, disclosed as strong evidence, not proof |
 | `attr_relativno` uses only earlier dates | Otherwise it used dates that had not happened yet (breaks the time rule) |
 | H3 race tested per person (paired Wilcoxon) | The row-level test mixes different people and hid the effect |
-| 136 rows with unknown race left out of H3 only | `samerace` says 0 there without real information |
+| `samerace` set to NA in the 136 rows with unknown race | It says 0 there without real information; H3 drops them, models impute the mode ("Ne") |
+| Partial preference answers: blanks set to 0 (participants 129, 130, 528) | Filled points already sum to 100; median imputation would push the sum over 100 |
 | Blank forms (189 rows) kept | They have a recorded decision; the result doesn't depend on them |
 | Extreme ages and IQR-flagged values kept | They are real and carry information; the result doesn't depend on them |
 
@@ -70,7 +74,7 @@ You push to GitHub yourself, so Claude should only say when something is ready.
 
 ## Still to do
 
-- Explain chapter 5, then review chapters 6 → 11 the same way.
+- Review chapters 7 → 11, then explain chapters 6 → 11.
 - Before submitting: set `koristi_cache <- FALSE` (line 21 of `Seminarski.Rmd`) and knit once from scratch.
 - Knit to Word and check formatting; verify volume and page numbers in "Literatura".
 - Shorten to about 45–50 pages.
