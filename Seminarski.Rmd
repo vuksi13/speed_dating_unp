@@ -747,7 +747,7 @@ Za pronalaženje ekstremnih vrednosti postoji više metoda:
 | Pravilo z-vrednosti | Vrednost je ekstremna ako je od proseka udaljena više od tri standardne devijacije (\|z\| \> 3) | Prosek i standardnu devijaciju podižu same ekstremne vrednosti, a pravilo pretpostavlja normalnu raspodelu |
 | Pravilo interkvartilnog raspona (IQR) | Vrednost je ekstremna ako je manja od Q1 - 1,5 \* IQR ili veća od Q3 + 1,5 \* IQR | Kod pitanja na koja većina odgovara slično označava i sasvim obične odgovore |
 
-Kod IQR pravila Q1 je prvi kvartil, ispod kog se nalazi 25% vrednosti, a Q3 treći kvartil, ispod kog se nalazi 75% vrednosti. Između njih je srednja polovina podataka, čija je širina IQR = Q3 - Q1. Boxplot grafik prikazuje upravo ovo pravilo, jer su tačke iznad i ispod brkova vrednosti van IQR granica. Kao glavno koristimo IQR pravilo, jer kvartili ne zavise od samih ekstremnih vrednosti i ne pretpostavljaju normalnu raspodelu, a z-vrednost koristimo kao dodatnu proveru.
+Kod IQR pravila Q1 je prvi kvartil, ispod kog se nalazi 25% vrednosti, a Q3 treći kvartil, ispod kog se nalazi 75% vrednosti. Između njih je srednji deo podataka, čija je širina IQR = Q3 - Q1. Boxplot grafik prikazuje upravo ovo pravilo, jer su tačke iznad i ispod brkova vrednosti van IQR granica. Kao glavno koristimo IQR pravilo, jer kvartili ne zavise od samih ekstremnih vrednosti i ne pretpostavljaju normalnu raspodelu, a z-vrednost koristimo kao dodatnu proveru.
 
 ## Starost učesnika
 
