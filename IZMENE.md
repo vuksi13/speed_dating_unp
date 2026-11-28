@@ -8,7 +8,9 @@ A running list of every correction to the seminar, so you can explain to the pro
 |---|---|
 | Cramér's V removed; effect size is now the gap in percentage points | Not part of the course; a percentage gap is easier to interpret |
 | `car::vif` replaced with our own `vif_glm()` | The `car` package would not install; the result is the same for numeric predictors |
+| Code hidden (`echo = FALSE`) in 33 blocks of chapters 2–6 that only print a table or chart; results still appear. Code stays visible where data is created or changed and for the chapter 7 hypothesis tests | Shorter seminar (about 2,100 fewer words); the full code is still in the Rmd file |
 | Caching for the slow model chunks | A full knit took about 10 minutes; now it takes about 1 minute after the first knit |
+| Hypothesis H5 (hypergamy) removed from the whole seminar: chapter 1 list (now four hypotheses), chapter 2 note, chapter 7 section and summary row, chapter 11 bullet | Our decision. The only available status measure was the partner's planned career, which isn't actual status; all participants have similar education; and `income` is area income, not personal income. The test also wasn't needed for the main goal (predicting the decision) |
 
 ## Chapter 1: Uvod
 
@@ -23,7 +25,7 @@ A running list of every correction to the seminar, so you can explain to the pro
 | Rewritten and shortened; column descriptions moved to an appendix | Easier to read; the full list stays available |
 | Added a check of same home area via zip code (74 dates, p = 0.34) | The `from` column is free text and can't be compared; the result isn't significant, so it isn't added to models |
 | Noted that the zip-code test is only a rough row-level check | Rows of the same person aren't independent |
-| Noted that H5 uses the partner's `career_c` as the status measure | `income` is the median income of the home area, not personal income, and `income`/`mn_sat` are missing for about half the participants |
+| Noted in the column table that `income` is the area's median income, not personal income | It explains why the column isn't useful beyond its missing values |
 
 ## Chapter 3: Čišćenje podataka
 
@@ -69,6 +71,35 @@ A running list of every correction to the seminar, so you can explain to the pro
 | Clarified the preference scale is 100 points for everyone | Waves 6–9 answered on 1–10 but the data were already converted to 100 |
 | Conclusion as prose instead of bullets; filler words removed | Shorter and easier to read |
 
+## Chapter 7: Statistički testovi
+
+| What | Why |
+|---|---|
+| H2 now also tested per person: for each person, how many percentage points the yes-chance rises per attractiveness point; men vs women with Mann-Whitney | The logistic model runs on rows, which aren't independent, so its p < 0.001 overstates certainty. Per person: men 16.5, women 15.0 points per rating point (p = 0.034). H2 still holds, but the gender difference is small |
+| Removed the two Q-Q plots (H1 and H3 age); normality is now shown with the Shapiro-Wilk test (H1) and the skewness coefficient (H3) | Shorter; the numbers give the same conclusion as the plots |
+| Dependence note rewritten as prose: every hypothesis is checked per person where possible | Previously only H1 and race were tested per person |
+| H4: dropped the claim that negative sincerity/ambition coefficients mean partners were "rated high out of politeness" | That was a guess not supported by the data; the text now says what the coefficient means (no extra information once other ratings are in the model) |
+| H4: H0 reworded ("the most important stated traits are the ones that most affect decisions") | The old wording promised a formal test of rank agreement that the chapter doesn't do |
+| H3 age: effect size in the summary table 0.52 → 0.525 | Matches the text |
+| Prose shortened throughout; filler removed | The chapter had to be shorter |
+
+Later fix: the intro sentence "veličina efekta koliko je velik" was unclear. It now says the effect size (e.g. the gap in % of "yes") shows how big the difference is and whether it matters in practice.
+
+## Chapter 8: Nove promenljive
+
+| What | Why |
+|---|---|
+| Corrected the age-direction text: only men say "yes" most often to same-age partners (53.1%, lower at 3+ years younger 46.0% or older 42.9%); for women the rate is flat (37.3–37.8%), lower only for partners 3+ years older (34.8%) | The old text said both genders prefer same-age partners, which isn't true for women |
+| Same field of study now also tested per person (paired Wilcoxon: 325 people, 50.2% vs 42.6%, p = 0.002) | Row-level chi-square ignores repeated rows per person; the per-person test confirms the effect |
+| Removed the table of "yes" by number of blank ratings | It repeated the chart from chapter 4 |
+| Merged the correlation table and the single-column AUC table ("global rating") into one table that also shows range and blanks; replaced the long `summary()` printout | Same information in one table instead of three outputs |
+| Descriptive tables print without code (`echo = FALSE`); code is shown only where data is created or changed | Fewer pages; the full code is still in the Rmd |
+| Rare-category code simplified into one chunk; the saved data set is byte-for-byte identical | Shorter; model results don't change |
+| Chapter about 40% shorter (3,053 → 1,822 words) | The seminar has to be shorter |
+
 ## Later chapters affected by earlier fixes
+
+Still to update when we reach chapter 11: the H2 bullet should mention the per-person check (small difference, p = 0.034).
+
 
 Numbers already updated in chapters 7–10 after the chapter 3 fixes: H4 now has 124 people (participant 528 was dropped before because of a blank field), attractiveness 24.0 → 32.4 points; small model changes (logistic regression CV accuracy 74.9%, test 75.8%; recall at threshold 0.35: 84.8%). Main results unchanged: lasso test AUC 0.821, accuracy 75.1%.

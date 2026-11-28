@@ -7,7 +7,7 @@ Work is on the git branch **`luka`**.
 
 Open Claude Code in this project folder and say:
 
-> Read `NAPREDAK_3.md` and continue the way it describes. Next step: review chapter 7.
+> Read `NAPREDAK_3.md` and continue the way it describes. Next step: review chapter 9.
 
 Since 27 Nov: review **all** chapters first and explain them afterwards. Edit only the chapter under review, and log every change with its reason in `IZMENE.md` (for the professor). If a fix moves numbers in a later chapter, note it in `IZMENE.md` and update it when that chapter is reviewed.
 
@@ -33,7 +33,9 @@ You push to GitHub yourself, so Claude should only say when something is ready.
 | 4 Nedostajuće vrednosti | Rewritten, reviewed and explained |
 | 5 Ekstremne vrednosti | Rewritten, reviewed and explained |
 | 6 Eksplorativna analiza | Rewritten and reviewed (27 Nov), including your follow-up fixes; explanation later |
-| 7–11 | Numbers updated, but **not yet deeply reviewed** |
+| 7 Statistički testovi | Reviewed and shortened (27 Nov); per-person check added for H2; H5 (hypergamy) removed from the whole seminar; explanation later |
+| 8 Nove promenljive | Reviewed and shortened by 40% (27 Nov); descriptive tables without code; explanation later |
+| 9–11 | Numbers updated, but **not yet deeply reviewed** |
 
 ## Decisions made, with reasons
 
@@ -74,7 +76,7 @@ You push to GitHub yourself, so Claude should only say when something is ready.
 
 ## Still to do
 
-- Review chapters 7 → 11, then explain chapters 6 → 11.
+- Review chapters 9 → 11, then explain chapters 6 → 11.
 - Before submitting: set `koristi_cache <- FALSE` (line 21 of `Seminarski.Rmd`) and knit once from scratch.
 - Knit to Word and check formatting; verify volume and page numbers in "Literatura".
 - Shorten to about 45–50 pages.
